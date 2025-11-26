@@ -1,130 +1,130 @@
-<!DOCTYPE html>
+<!DOCTYPE HTML>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <title>나의 GitHub 페이지</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
-      background: #0f172a;
-      color: #e5e7eb;
+<머리>
+ <meta charset=>UTF-8" />
+ <title>나의 깃허브 페이지</title>
+ <meta 이름="viewport" 콘텐츠="width=장치 너비, 초기 스케일=1" />
+ <스타일>
+ 본문 {
+ 여백: 0;
+ 폰트 패밀리: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+ 선 높이: 1.5;
+ 배경: #0f172a;
+ color: #e5e7eb;
+ }
+
+ 헤더 {
+ 배경: rgba(15, 23, 42, 0.9);
+ 경계 바닥: 1 px 고체 rgba(148, 163, 184, 0.3);
+ 패딩: 16 px 24 px;
+ 포지션: 끈적임;
+ 상단: 0;
+ 배경 필터: 블러(12 px);
+ 디스플레이: 플렉스;
+ 정당화 내용: 공간 간;
+ 정렬 items: 중심;
+ z-지수: 10;
+ }
+
+ 헤더 h1 {
+ 글꼴 크기: 20 px;
+ 여백: 0;
+ }
+
+ {항해}
+ color: #cbd5f5;
+ 텍스트 장식: 없음;
+ 여백 왼쪽: 16 px;
+ 글꼴 크기: 14 px;
     }
 
-    header {
-      background: rgba(15, 23, 42, 0.9);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-      padding: 16px 24px;
-      position: sticky;
-      top: 0;
-      backdrop-filter: blur(12px);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      z-index: 10;
+ nav a: hover {
+ 텍스트 장식: 밑줄 긋기;
     }
 
-    header h1 {
-      font-size: 20px;
-      margin: 0;
+ .영웅 {
+ 패딩: 72 px 24 px 56 px;
+ 텍스트 align: 중심;
+ 배경: 방사형 gradient(위쪽 circle, #1d4ed80 0, #020617 55%, #000 100%);
     }
 
-    nav a {
-      color: #cbd5f5;
-      text-decoration: none;
-      margin-left: 16px;
-      font-size: 14px;
+ .hero h2 {
+ 글꼴 크기: 32 px;
+ 마진 바닥: 16 px;
     }
 
-    nav a:hover {
-      text-decoration: underline;
+ .hero p {
+ 글꼴 크기: 16 px;
+ 최대 너비: 520 px;
+ 여백: 0 자동 24 px;
+ color: #e5e7eb;
+ 불투명도: 0.9;
     }
 
-    .hero {
-      padding: 72px 24px 56px;
-      text-align: center;
-      background: radial-gradient(circle at top, #1d4ed8 0, #020617 55%, #000 100%);
-    }
+ .영웅 버튼 {
+ 패딩: 12 px 24 px;
+ 국경 radius: 9999 px;
+ 경계: 없음;
+ 글꼴 크기: 14 px;
+ 커서: 포인터;
+ 배경: #2563eb;
+ 색상: 흰색;
+ 박스 shadow: 0 10 px 25 px rgba(37, 99, 235, 0.5);
+ }
 
-    .hero h2 {
-      font-size: 32px;
-      margin-bottom: 16px;
-    }
+ .hero 버튼:hover {
+ 변환: 번역 Y(-1px);
+ }
 
-    .hero p {
-      font-size: 16px;
-      max-width: 520px;
-      margin: 0 auto 24px;
-      color: #e5e7eb;
-      opacity: 0.9;
-    }
+ 섹션 {
+ 패딩: 48 px 24 px;
+ 최대 너비: 960 px;
+ 여백: 0 auto;
+ }
 
-    .hero button {
-      padding: 12px 24px;
-      border-radius: 9999px;
-      border: none;
-      font-size: 14px;
-      cursor: pointer;
-      background: #2563eb;
-      color: white;
-      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.5);
-    }
+ .섹션 h3 {
+ 글꼴 크기: 24 px;
+ 마진 바닥: 16 px;
+ }
 
-    .hero button:hover {
-      transform: translateY(-1px);
-    }
+ .섹션 p {
+ color: #e5e7eb;
+ 불투명도: 0.85;
+ }
 
-    .section {
-      padding: 48px 24px;
-      max-width: 960px;
-      margin: 0 auto;
-    }
+ .카드 {
+ 디스플레이: 그리드;
+ 그리드 template columns: 반복(자동 장착, minmax(220 px, 1fr));
+ 갭: 16 px;
+ 마진 탑: 16 px;
+ }
 
-    .section h3 {
-      font-size: 24px;
-      margin-bottom: 16px;
-    }
+ .카드 {
+ 국경 radius: 16 px;
+ 패딩: 16 px;
+ 배경: rgba(15, 23, 42, 0.9);
+ 경계: 1 px 고체 rgba(148, 163, 184, 0.4);
+ }
 
-    .section p {
-      color: #e5e7eb;
-      opacity: 0.85;
-    }
+ .card h4 {
+ 여백: 0 0 8 px;
+ 글꼴 크기: 18 px;
+ }
 
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-top: 16px;
-    }
+ .card p {
+ 여백: 0;
+ 글꼴 크기: 14 px;
+ color: #e5e7eb;
+ 불투명도: 0.85;
+ }
 
-    .card {
-      border-radius: 16px;
-      padding: 16px;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(148, 163, 184, 0.4);
-    }
-
-    .card h4 {
-      margin: 0 0 8px;
-      font-size: 18px;
-    }
-
-    .card p {
-      margin: 0;
-      font-size: 14px;
-      color: #e5e7eb;
-      opacity: 0.85;
-    }
-
-    footer {
-      padding: 24px;
-      text-align: center;
-      font-size: 12px;
-      color: #9ca3af;
-      border-top: 1px solid rgba(148, 163, 184, 0.3);
-      background: #020617;
+ 바닥글 {
+ 패딩: 24 px;
+ 텍스트 align: 중심;
+ 글꼴 크기: 12 px;
+ color: #9ca3af;
+ 보더탑: 1 px 고체 rgba(148, 163, 184, 0.3);
+ 배경: #020617;
  마진 탑: 32 px;
  }
  </스타일>
