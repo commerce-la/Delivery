@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>엑셀 변환 도구</title>
+  <title>엑셀 → waybill 변환 도구</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- SheetJS (브라우저용) -->
@@ -33,7 +33,7 @@
     }
 
     main {
-      max-width: 960px;
+      max-width: 1040px;
       margin: 0 auto;
       padding: 32px 16px 48px;
     }
@@ -44,6 +44,7 @@
       padding: 24px;
       border: 1px solid rgba(148, 163, 184, 0.4);
       box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
+      margin-bottom: 24px;
     }
 
     .card h2 {
@@ -108,39 +109,103 @@
     }
 
     th, td {
-      border: 1px solid rgba(148, 163, 184, 0.4);
+      border: 1px solid rgba(148, 163, 184, 0.6);
       padding: 4px 6px;
-      text-align: left;
       white-space: nowrap;
     }
 
     th {
-      background: rgba(37, 99, 235, 0.2);
+      background: rgba(37, 99, 235, 0.3);
+    }
+
+    .mapping {
+      margin-top: 16px;
+      font-size: 13px;
+    }
+
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px 16px;
+      margin-top: 12px;
+    }
+
+    .mapping-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mapping-item label {
+      font-size: 12px;
+      color: #e5e7eb;
+    }
+
+    .mapping-item select {
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.8);
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 12px;
+    }
+
+    .mapping-hint {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+
+    .section-title {
+      font-size: 16px;
+      margin-top: 0;
+      margin-bottom: 8px;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>엑셀 변환 도구</h1>
+    <h1>엑셀 → waybill 변환 도구 (GitHub Pages)</h1>
   </header>
 
   <main>
     <div class="card">
-      <h2>엑셀 업로드 → 규칙 적용 → 새 엑셀 다운로드</h2>
+      <h2>1. 엑셀 업로드</h2>
       <p>
-        아래에 엑셀 파일(.xlsx)을 업로드하면, 미리 정의된 규칙에 따라 데이터를 변환하고
-        <strong>새로운 엑셀 파일</strong>로 다운로드해 줍니다.
-        <br />
-        (모든 처리는 브라우저 안에서만 실행되고, 서버로 업로드되지 않습니다.)
+        어떤 형식의 엑셀이라도 업로드할 수 있습니다. <br />
+        업로드 후, 아래에서 <strong>각 열을 waybill 양식의 어떤 항목에 쓸지</strong> 선택하면,
+        동일한 waybill 형식으로 엑셀 파일을 만들어 줍니다.
       </p>
 
       <div class="file-input">
         <input type="file" id="file-input" accept=".xlsx,.xls" />
       </div>
 
-      <button id="convert-btn" disabled>엑셀 변환하기</button>
-
       <div class="status" id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. 열 매핑 설정 (입력 엑셀 → waybill 양식)</h2>
+      <p>
+        업로드한 엑셀의 컬럼(열) 목록을 기준으로, <strong>waybill의 각 항목에 대응되는 열</strong>을 선택하세요. <br />
+        매핑하지 않은 항목은 빈 값으로 들어갑니다. (예: 기본운임을 항상 나중에 수동으로 넣을 경우)
+      </p>
+
+      <div id="mapping" class="mapping">
+        아직 파일이 업로드되지 않았습니다.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. 미리보기 & 변환 실행</h2>
+      <p>
+        아래에 원본 데이터의 일부를 미리 보여줍니다. <br />
+        열 매핑을 확인한 후 <strong>엑셀 변환하기</strong> 버튼을 누르면, waybill 형식의 엑셀이 다운로드됩니다.
+      </p>
+
+      <button id="convert-btn" disabled>엑셀 변환하기 (waybill.xlsx)</button>
+
+      <div class="status" id="status-convert"></div>
 
       <div class="preview" id="preview"></div>
     </div>
@@ -150,112 +215,201 @@
     const fileInput = document.getElementById("file-input");
     const convertBtn = document.getElementById("convert-btn");
     const statusEl = document.getElementById("status");
+    const statusConvertEl = document.getElementById("status-convert");
     const previewEl = document.getElementById("preview");
+    const mappingEl = document.getElementById("mapping");
 
     let originalRows = [];
+    let headers = [];
+
+    // waybill 양식의 고정 컬럼 정의
+    const WAYBILL_FIELDS = [
+      { key: "받는분성명", label: "받는분 성명" },
+      { key: "받는분주소(전체, 분할)", label: "받는분 주소(전체, 분할)" },
+      { key: "받는분전화번호", label: "받는분 전화번호" },
+      { key: "받는분기타연락처", label: "받는분 기타 연락처" },
+      { key: "품목명", label: "품목명" },
+      { key: "박스수량", label: "박스 수량" },
+      { key: "기본운임", label: "기본 운임" },
+      { key: "운임구분", label: "운임 구분" },
+      { key: "보내는분성명", label: "보내는분 성명" },
+      { key: "보내는분주소(전체, 분할)", label: "보내는분 주소(전체, 분할)" },
+      { key: "보내는분전화번호", label: "보내는분 전화번호" },
+      { key: "배송메세지1", label: "배송 메세지 1" },
+      { key: "기타1", label: "기타1" }
+    ];
 
     fileInput.addEventListener("change", async (e) => {
       const file = e.target.files[0];
+      statusConvertEl.textContent = "";
       if (!file) {
         convertBtn.disabled = true;
         statusEl.textContent = "파일을 선택해 주세요.";
+        mappingEl.textContent = "아직 파일이 업로드되지 않았습니다.";
+        previewEl.innerHTML = "";
         return;
       }
 
       try {
         statusEl.textContent = "엑셀 읽는 중...";
         previewEl.innerHTML = "";
+        mappingEl.textContent = "";
 
         const data = await file.arrayBuffer();
-
-        // 엑셀 읽기
         const workbook = XLSX.read(data);
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        // 시트 → JS 객체 배열로 변환
         originalRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-        statusEl.textContent = `첫 번째 시트("${firstSheetName}")에서 ${originalRows.length}개의 행을 읽었습니다.`;
-        convertBtn.disabled = originalRows.length === 0;
+        if (!originalRows || originalRows.length === 0) {
+          statusEl.textContent = `첫 번째 시트("${firstSheetName}")에 데이터가 없습니다.`;
+          convertBtn.disabled = true;
+          mappingEl.textContent = "매핑을 할 데이터가 없습니다.";
+          return;
+        }
 
-        // 미리보기 표시 (앞부분 몇 줄만)
+        headers = Object.keys(originalRows[0]);
+        statusEl.textContent = `첫 번째 시트("${firstSheetName}")에서 ${originalRows.length}개의 행을 읽었습니다.`;
+
+        convertBtn.disabled = false;
+
         showPreviewTable(originalRows);
+        buildMappingUI(headers);
 
       } catch (err) {
         console.error(err);
         statusEl.textContent = "엑셀 파일을 읽는 중 오류가 발생했습니다.";
         convertBtn.disabled = true;
+        mappingEl.textContent = "매핑을 생성할 수 없습니다.";
       }
     });
 
     convertBtn.addEventListener("click", () => {
+      statusConvertEl.textContent = "";
       if (!originalRows || originalRows.length === 0) {
-        statusEl.textContent = "먼저 엑셀 파일을 업로드해 주세요.";
+        statusConvertEl.textContent = "먼저 엑셀 파일을 업로드해 주세요.";
         return;
       }
 
+      const mapping = getMapping();
+      if (!mapping) {
+        statusConvertEl.textContent = "열 매핑을 읽어오는 중 문제가 발생했습니다.";
+        return;
+      }
+
+      // 필수로 매핑해야 하는 항목을 지정하고 싶다면 여기서 체크할 수 있음 (예: 품목명)
+      // 예: if (!mapping["품목명"]) { ... }
+
       try {
-        statusEl.textContent = "규칙을 적용하는 중...";
+        statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-        // ⬇⬇⬇ 여기가 "규칙"을 정의하는 부분입니다 ⬇⬇⬇
-        const transformedRows = applyRules(originalRows);
-        // ⬆⬆⬆ 이 함수 안을 바꾸면 원하는 규칙으로 가공할 수 있어요 ⬆⬆⬆
+        const transformedRows = applyRules(originalRows, mapping);
 
-        // JS 객체 배열 → 워크시트
         const newWorksheet = XLSX.utils.json_to_sheet(transformedRows);
 
-        // 새 워크북 만들고 시트 추가
         const newWorkbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "결과");
+        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
 
-        // 엑셀 파일로 다운로드 (파일명은 원하는 대로 변경 가능)
         XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
 
-        statusEl.textContent = `변환 완료! 총 ${transformedRows.length}개의 행이 결과 파일에 포함되었습니다.`;
+        statusConvertEl.textContent =
+          `변환 완료! 총 ${transformedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
 
       } catch (err) {
         console.error(err);
-        statusEl.textContent = "변환 중 오류가 발생했습니다.";
+        statusConvertEl.textContent = "변환 중 오류가 발생했습니다.";
       }
     });
 
-/**
- * 규칙 적용 함수
- * rows: alpha_delivery 형식의 행 배열
- */
-function applyRules(rows) {
-  // rows 의 예시 컬럼 (alpha_goods 기준):
-  // "상품코드", "품목명", "바코드", "상품명", "규격", "단위", "입수", "납품단가", "상품분류1", "상품분류2", "상품분류3" ...
+    // 매핑 UI 만들기
+    function buildMappingUI(headers) {
+      if (!headers || headers.length === 0) {
+        mappingEl.textContent = "입력 엑셀의 컬럼을 찾을 수 없습니다.";
+        return;
+      }
 
-  // 여기서는 alpha_delivery 의 각 상품 행을
-  // waybill 양식의 한 줄로 변환한다고 가정합니다.
-  // 받는분/보내는분 정보는 아직 정해진 게 없어서 일단 공란("")으로 두고,
-  // 품목명과 박스수량만 채워 넣는 기본 매핑입니다.
+      let html = "";
+      html += `<div class="mapping-hint">`;
+      html += `각 waybill 항목에 대해, 어떤 입력 엑셀 열을 사용할지 선택하세요. `;
+      html += `선택하지 않은 항목은 빈 값으로 들어갑니다.`;
+      html += `</div>`;
 
-  const result = rows.map((row) => {
-    // alpha 파일에서 품목 이름은 "상품명" 또는 "품목명" 컬럼에서 가져옵니다.
-    const itemName = row["상품명"] || row["품목명"] || "";
+      html += `<div class="mapping-grid">`;
 
-    return {
-      "받는분성명": "",                 // 필요하면 나중에 고정 값이나 다른 컬럼 값으로 채워도 됨
-      "받는분주소(전체, 분할)": "",
-      "받는분전화번호": "",
-      "받는분기타연락처": "",
-      "품목명": "",                     // ▶ alpha의 상품명을 waybill 품목명으로
-      "박스수량": 1,                    // ▶ 기본값 1박스로 설정
-      "기본운임": "",                   // ▶ 운임 정보가 있으면 나중에 규칙 추가 가능
-      "운임구분": "",
-      "보내는분성명": "",
-      "보내는분주소(전체, 분할)": "경기도 김포시 애기봉로 206",
-      "보내는분전화번호": "031-987-9495",
-      "배송메세지1": "",
-      "기타1": ""
-    };
-  });
+      for (const field of WAYBILL_FIELDS) {
+        html += `<div class="mapping-item">`;
+        html += `<label for="map-${field.key}">waybill: ${field.key}</label>`;
+        html += `<select id="map-${field.key}" data-field="${field.key}">`;
+        html += `<option value="">(비워두기)</option>`;
 
-  return result;
-}
+        for (const h of headers) {
+          html += `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`;
+        }
+
+        html += `</select>`;
+        html += `</div>`;
+      }
+
+      html += `</div>`;
+      mappingEl.innerHTML = html;
+    }
+
+    // 셀렉트 박스에서 매핑 정보 가져오기
+    function getMapping() {
+      const mapping = {};
+      for (const field of WAYBILL_FIELDS) {
+        const select = document.querySelector(`select[data-field="${field.key}"]`);
+        if (!select) continue;
+        const value = select.value;
+        mapping[field.key] = value || null; // 선택 안한 경우 null
+      }
+      return mapping;
+    }
+
+    /**
+     * 규칙 적용 함수
+     * rows: 입력 엑셀의 행 배열
+     * mapping: { "품목명": "입력컬럼명", ... } 형태
+     */
+    function applyRules(rows, mapping) {
+      // 입력이 상황에 따라 달라지기 때문에,
+      // "어느 열을 쓸지"는 모두 mapping 을 통해 결정합니다.
+      // 매핑되지 않은 항목은 공백("") 처리합니다.
+
+      const result = rows.map((row, index) => {
+        const out = {};
+
+        for (const field of WAYBILL_FIELDS) {
+          const key = field.key;
+          const mappedHeader = mapping[key];
+
+          if (!mappedHeader) {
+            // 박스수량 기본값은 1로 두고 싶으면 여기서 처리
+            if (key === "박스수량") {
+              out[key] = 1;
+            } else {
+              out[key] = "";
+            }
+            continue;
+          }
+
+          const value = row[mappedHeader];
+
+          // 박스수량, 기본운임 등 숫자일 가능성이 높은 항목은 필요시 숫자 처리 가능
+          if (key === "박스수량") {
+            const num = Number(value);
+            out[key] = Number.isFinite(num) && num > 0 ? num : 1; // 기본값 1
+          } else {
+            out[key] = value ?? "";
+          }
+        }
+
+        return out;
+      });
+
+      return result;
+    }
 
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
@@ -263,9 +417,8 @@ function applyRules(rows) {
         return;
       }
 
-      const maxRows = 20; // 미리보기는 최대 20개까지만
+      const maxRows = 10;
       const previewRows = rows.slice(0, maxRows);
-
       const keys = Object.keys(previewRows[0]);
 
       let html = "<div>원본 데이터 미리보기 (상위 " + previewRows.length + "행)</div>";
@@ -298,4 +451,3 @@ function applyRules(rows) {
   </script>
 </body>
 </html>
-
