@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>나의 GitHub 페이지</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+
+    header {
+      background: rgba(15, 23, 42, 0.9);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+      padding: 16px 24px;
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(12px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 20px;
+      margin: 0;
+    }
+
+    nav a {
+      color: #cbd5f5;
+      text-decoration: none;
+      margin-left: 16px;
+      font-size: 14px;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    .hero {
+      padding: 72px 24px 56px;
+      text-align: center;
+      background: radial-gradient(circle at top, #1d4ed8 0, #020617 55%, #000 100%);
+    }
+
+    .hero h2 {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+
+    .hero p {
+      font-size: 16px;
+      max-width: 520px;
+      margin: 0 auto 24px;
+      color: #e5e7eb;
+      opacity: 0.9;
+    }
+
+    .hero button {
+      padding: 12px 24px;
+      border-radius: 9999px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.5);
+    }
+
+    .hero button:hover {
+      transform: translateY(-1px);
+    }
+
+    .section {
+      padding: 48px 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .section h3 {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
+    .section p {
+      color: #e5e7eb;
+      opacity: 0.85;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .card {
+      border-radius: 16px;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+    }
+
+    .card h4 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 14px;
+      color: #e5e7eb;
+      opacity: 0.85;
+    }
+
+    footer {
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+      border-top: 1px solid rgba(148, 163, 184, 0.3);
+      background: #020617;
+ 마진 탑: 32 px;
+ }
+ </스타일>
+</머리>
+<바디>
+ <header>
+ <h1>나의 GitHub 페이지</h1>
+ <nav>
+ <a href="#about">소개</a>
+ <a href="#projects">프로젝트</a>
+ <a href="#contact">연락</a>
+ </nav>
+ </header>
+
+ 메인
+ <섹션 클래스="영웅">
+ <h2>안녕하세요! 👋</h2>
+ <p>
+ GitHub Pages로 만든 나만의 웹사이트입니다. 
+ 아래에는 나에 대한 소개와 프로젝트, 연락처를 정리해 두었어요.
+ </p>
+ <버튼 클릭="경고('GitHub 페이지 배포 성공! 🎉')>>
+ 동작 확인하기
+ </버튼>
+ </섹션>
+
+ <섹션 ID="class="섹션에 대하여">
+ <h3>소개</h3>
+ <p>
+ 여기에 자기소개를 적어보세요.<br />
+ 예) 저는 웹 개발을 공부하고 있는 OOO입니다. 관심 분야는 프론트엔드, 백엔드, 디자인 등입니다.
+ </p>
+ </섹션>
+
+ <섹션 ID="projects" 클래스="섹션">
+ <h3>프로젝트</h3>
+ <div class="cards">
+ <article class="카드">
+ <h4>프로젝트 1</h4>
+ <p>첫 번째 프로젝트 설명을 적어보세요.</p>
+ </기사>
+ <article class="카드">
+ <h4>프로젝트 2</h4>
+ <p>두 번째 프로젝트 설명을 적어보세요.</p>
+ </기사>
+ <article class="카드">
+ <h4>프로젝트 3</h4>
+ <p>세 번째 프로젝트 설명을 적어보세요.</p>
+ </기사>
+ </div>
+ </섹션>
+
+ <섹션 ID="연락처" 클래스="섹션">
+ <h3>연락</h3>
+ <p>이메일: you@example.com </p>
+ </섹션>
+ </메인>
+
+ <footer>
+ © 2025 나의 GitHub 페이지. 무단 전재 금지.
+ </footer>
+</body>
+</html>
