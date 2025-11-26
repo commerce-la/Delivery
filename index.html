@@ -400,14 +400,30 @@
 
     // 규칙 적용 (입력 엑셀 + 매핑 + 업체명)
 function applyRules(rows, mapping) {
-  const result = rows.map((row) => {
+  // 1) 알파인 경우: 주문량 0인 행 제거
+  let workingRows = rows;
+  if (selectedVendor === "알파") {
+    workingRows = rows.filter((row) => {
+      const raw = row["주문량"];
+
+      if (raw === null || raw === undefined || raw === "") {
+        // 주문량이 비어 있으면 0으로 보고 제외
+        return false;
+      }
+
+      // "1,234" 같은 값 대비해서 , 제거 후 숫자 변환
+      const num = Number(String(raw).replace(/,/g, "").trim() || "0");
+      return Number.isFinite(num) && num !== 0;
+    });
+  }
+
+  const result = workingRows.map((row) => {
     const out = {};
 
     for (const field of WAYBILL_FIELDS) {
       const key = field.key;
-      const mappedHeader = mapping[key];
 
-      // ✅ 1) 보내는분 고정값 처리
+      // 2) 보내는분 정보는 항상 고정값
       if (key === "보내는분주소(전체, 분할)") {
         out[key] = "경기도 김포시 애기봉로 206";
         continue;
@@ -418,10 +434,41 @@ function applyRules(rows, mapping) {
         continue;
       }
 
-      // ✅ 2) 나머지는 기존 매핑 로직
+      // 3) 알파 전용 매핑 규칙
+      if (selectedVendor === "알파") {
+        // 수령자명 → 받는분성명
+        if (key === "받는분성명") {
+          out[key] = row["수령자명"] ?? "";
+          continue;
+        }
+
+        // 수령자 주소 → 받는분주소(전체, 분할)
+        if (key === "받는분주소(전체, 분할)") {
+          out[key] = row["수령자 주소"] ?? "";
+          continue;
+        }
+
+        // 수령자 전화번호 / 수령자 휴대전화 → 받는분전화번호 (우선순위 적용)
+        if (key === "받는분전화번호") {
+          const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
+          const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
+          out[key] = phone1 || phone2 || "";
+          continue;
+        }
+
+        // 수령자 휴대전화 → 받는분기타연락처
+        if (key === "받는분기타연락처") {
+          out[key] = row["수령자 휴대전화"] ?? "";
+          continue;
+        }
+      }
+
+      // 4) 그 외 항목들은 기존처럼 매핑 UI 설정대로 처리
+      const mappedHeader = mapping[key];
+
       if (!mappedHeader) {
         if (key === "박스수량") {
-          out[key] = 1;  // 기본 박스 수량
+          out[key] = 1; // 기본 박스 수량
         } else {
           out[key] = "";
         }
