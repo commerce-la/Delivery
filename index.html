@@ -191,6 +191,21 @@
         매핑하지 않은 항목은 빈 값으로 들어갑니다. (예: 기본운임을 항상 나중에 수동으로 넣을 경우)
       </p>
 
+<div class="mapping">
+  <h3 class="section-title">업체명 선택</h3>
+
+  <div class="mapping-item" style="max-width: 240px;">
+    <label for="vendor-select">업체명</label>
+    <select id="vendor-select">
+      <option value="">선택하세요</option>
+      <option value="알파">알파</option>
+    </select>
+    <div class="mapping-hint">* 현재는 "알파" 선택만 지원합니다.</div>
+  </div>
+
+  <hr style="margin: 20px 0; border-color: rgba(148,163,184,0.3);" />
+</div>
+
       <div id="mapping" class="mapping">
         아직 파일이 업로드되지 않았습니다.
       </div>
@@ -417,7 +432,7 @@
         return;
       }
 
-      const maxRows = 10;
+      const maxRows = 20;
       const previewRows = rows.slice(0, maxRows);
       const keys = Object.keys(previewRows[0]);
 
