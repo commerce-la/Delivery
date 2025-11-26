@@ -400,7 +400,7 @@
 
     // 규칙 적용 (입력 엑셀 + 매핑 + 업체명)
 function applyRules(rows, mapping) {
-  // 1) 알파인 경우: 주문량 0인 행 제거
+  // 1) 알파일 경우: 주문량 0인 행 제거
   let workingRows = rows;
   if (selectedVendor === "알파") {
     workingRows = rows.filter((row) => {
@@ -411,7 +411,6 @@ function applyRules(rows, mapping) {
         return false;
       }
 
-      // "1,234" 같은 값 대비해서 , 제거 후 숫자 변환
       const num = Number(String(raw).replace(/,/g, "").trim() || "0");
       return Number.isFinite(num) && num !== 0;
     });
@@ -423,7 +422,7 @@ function applyRules(rows, mapping) {
     for (const field of WAYBILL_FIELDS) {
       const key = field.key;
 
-      // 2) 보내는분 정보는 항상 고정값
+      // ✅ 보내는분주소 / 보내는분전화번호는 항상 고정값
       if (key === "보내는분주소(전체, 분할)") {
         out[key] = "경기도 김포시 애기봉로 206";
         continue;
@@ -434,9 +433,20 @@ function applyRules(rows, mapping) {
         continue;
       }
 
-      // 3) 알파 전용 매핑 규칙
+      // ✅ 알파 전용: 발주처가 "안성물류"면 보내는분성명 = "알파 안성"
+      if (selectedVendor === "알파" && key === "보내는분성명") {
+        const purchaser = (row["발주처"] ?? "").toString().trim();
+        if (purchaser === "안성물류") {
+          out[key] = "알파 안성";
+        } else {
+          out[key] = "";  // 다른 발주처면 비워두거나 필요시 나중에 규칙 추가
+        }
+        continue;
+      }
+
+      // ✅ 알파 전용: 수령자 정보 매핑
       if (selectedVendor === "알파") {
-        // 수령자명 → 받는분성명
+        // 수령자명 → 받는분성명 (보내는분성명과 헷갈리지 않도록 주의!)
         if (key === "받는분성명") {
           out[key] = row["수령자명"] ?? "";
           continue;
@@ -448,7 +458,7 @@ function applyRules(rows, mapping) {
           continue;
         }
 
-        // 수령자 전화번호 / 수령자 휴대전화 → 받는분전화번호 (우선순위 적용)
+        // 수령자 전화번호 / 수령자 휴대전화 → 받는분전화번호 (우선순위: 전화 → 휴대전화)
         if (key === "받는분전화번호") {
           const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
           const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
@@ -463,12 +473,12 @@ function applyRules(rows, mapping) {
         }
       }
 
-      // 4) 그 외 항목들은 기존처럼 매핑 UI 설정대로 처리
+      // ✅ 그 외 항목들은 매핑 UI에서 선택한 컬럼대로 처리
       const mappedHeader = mapping[key];
 
       if (!mappedHeader) {
         if (key === "박스수량") {
-          out[key] = 1; // 기본 박스 수량
+          out[key] = 1;  // 기본 박스 수량
         } else {
           out[key] = "";
         }
