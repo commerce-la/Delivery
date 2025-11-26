@@ -236,6 +236,7 @@
 
     let originalRows = [];
     let headers = [];
+    let selectedVendor = "";
 
     // waybill 양식의 고정 컬럼 정의
     const WAYBILL_FIELDS = [
@@ -265,6 +266,10 @@
         return;
       }
 
+      document.getElementById("vendor-select").addEventListener("change", (e) => {
+        selectedVendor = e.target.value;
+      });
+      
       try {
         statusEl.textContent = "엑셀 읽는 중...";
         previewEl.innerHTML = "";
@@ -388,26 +393,40 @@
      * mapping: { "품목명": "입력컬럼명", ... } 형태
      */
     function applyRules(rows, mapping) {
-      // 입력이 상황에 따라 달라지기 때문에,
-      // "어느 열을 쓸지"는 모두 mapping 을 통해 결정합니다.
-      // 매핑되지 않은 항목은 공백("") 처리합니다.
+  const result = rows.map((row) => {
+    const out = {};
 
-      const result = rows.map((row, index) => {
-        const out = {};
+    // waybill 컬럼 매핑 처리
+    for (const field of WAYBILL_FIELDS) {
+      const key = field.key;
+      const mappedHeader = mapping[key];
 
-        for (const field of WAYBILL_FIELDS) {
-          const key = field.key;
-          const mappedHeader = mapping[key];
+      if (!mappedHeader) {
+        if (key === "박스수량") {
+          out[key] = 1;
+        } else {
+          out[key] = "";
+        }
+        continue;
+      }
 
-          if (!mappedHeader) {
-            // 박스수량 기본값은 1로 두고 싶으면 여기서 처리
-            if (key === "박스수량") {
-              out[key] = 1;
-            } else {
-              out[key] = "";
-            }
-            continue;
-          }
+      const value = row[mappedHeader];
+      if (key === "박스수량") {
+        const num = Number(value);
+        out[key] = Number.isFinite(num) && num > 0 ? num : 1;
+      } else {
+        out[key] = value ?? "";
+      }
+    }
+
+    // ⬇⬇⬇ 업체명 추가 (출력 시 항상 포함됨) ⬇⬇⬇
+    out["업체명"] = selectedVendor || "";
+
+    return out;
+  });
+
+  return result;
+}
 
           const value = row[mappedHeader];
 
