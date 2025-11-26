@@ -399,37 +399,50 @@
     }
 
     // 규칙 적용 (입력 엑셀 + 매핑 + 업체명)
-    function applyRules(rows, mapping) {
-      const result = rows.map((row) => {
-        const out = {};
+function applyRules(rows, mapping) {
+  const result = rows.map((row) => {
+    const out = {};
 
-        for (const field of WAYBILL_FIELDS) {
-          const key = field.key;
-          const mappedHeader = mapping[key];
+    for (const field of WAYBILL_FIELDS) {
+      const key = field.key;
+      const mappedHeader = mapping[key];
 
-          if (!mappedHeader) {
-            if (key === "박스수량") {
-              out[key] = 1;  // 기본 박스 수량 1
-            } else {
-              out[key] = "";
-            }
-            continue;
-          }
+      // ✅ 1) 보내는분 고정값 처리
+      if (key === "보내는분주소(전체, 분할)") {
+        out[key] = "경기도 김포시 애기봉로 206";
+        continue;
+      }
 
-          const value = row[mappedHeader];
-          if (key === "박스수량") {
-            const num = Number(value);
-            out[key] = Number.isFinite(num) && num > 0 ? num : 1;
-          } else {
-            out[key] = value ?? "";
-          }
+      if (key === "보내는분전화번호") {
+        out[key] = "031-987-9495";
+        continue;
+      }
+
+      // ✅ 2) 나머지는 기존 매핑 로직
+      if (!mappedHeader) {
+        if (key === "박스수량") {
+          out[key] = 1;  // 기본 박스 수량
+        } else {
+          out[key] = "";
         }
+        continue;
+      }
 
-        return out;
-      });
+      const value = row[mappedHeader];
 
-      return result;
+      if (key === "박스수량") {
+        const num = Number(value);
+        out[key] = Number.isFinite(num) && num > 0 ? num : 1;
+      } else {
+        out[key] = value ?? "";
+      }
     }
+
+    return out;
+  });
+
+  return result;
+}
 
     // 원본 미리보기
     function showPreviewTable(rows) {
