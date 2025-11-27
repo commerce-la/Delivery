@@ -237,25 +237,24 @@
     let alphaGoodsLoaded = false;
     let alphaGoodsLoadingError = null;
 
-    async function loadAlphaGoods() {
-  try {
-    // 같은 도메인에서 제공되는 alpha_delivery.html을 불러옴
-    const res = await fetch("https://commerce-la.github.io/Delivery/alpha_delivery.html");
-    const text = await res.text();
+vendorSelect.addEventListener("change", async (e) => {
+  selectedVendor = e.target.value;
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, "text/html");
-
-    // 우리가 만든 alpha_delivery.html 은 table.data-table 구조라고 가정
-    const table = doc.querySelector("table.data-table");
-    if (!table) {
-      throw new Error("alpha_delivery.html에서 data-table을 찾지 못했습니다.");
+  // 업체명이 "알파"로 선택된 경우에만 마스터 로딩 시도
+  if (selectedVendor === "알파" && !alphaGoodsLoaded && !alphaGoodsLoadingError) {
+    try {
+      statusConvertEl.textContent = "알파 상품 정보 로딩 중...";
+      await loadAlphaGoods();
+      if (alphaGoodsLoaded) {
+        statusConvertEl.textContent = "알파 상품 정보 로딩 완료.";
+      } else {
+        statusConvertEl.textContent = "알파 상품 정보를 불러오지 못했습니다.";
+      }
+    } catch (err) {
+      statusConvertEl.textContent = "알파 상품 정보 로딩 중 오류가 발생했습니다.";
     }
-
-    const rows = Array.from(table.querySelectorAll("tbody tr"));
-    rows.forEach(tr => {
-      const tds = tr.querySelectorAll("td");
-      if (tds.length === 0) return;
+  }
+});
 
       // alpha_delivery 컬럼 순서 가정:
       // 0: 상품코드, 1: 품목명, 2: 바코드, 3: 상품명, 4: 규격, 5: 단위, ...
