@@ -398,67 +398,85 @@
       return mapping;
     }
 
-    // 규칙 적용 (입력 엑셀 + 매핑 + 업체명)
 function applyRules(rows, mapping) {
-  // 1) 알파일 경우: 주문량 0인 행 제거
-  let workingRows = rows;
-  if (selectedVendor === "알파") {
-    workingRows = rows.filter((row) => {
-      const raw = row["주문량"];
+  let workingRows = [...rows];
 
-      if (raw === null || raw === undefined || raw === "") {
-        // 주문량이 비어 있으면 0으로 보고 제외
-        return false;
+  // ============================
+  // ★ 0. 알파 전용 선처리 규칙
+  // ============================
+  if (selectedVendor === "알파") {
+    workingRows = workingRows.map((row) => {
+      const purchaser = (row["발주처"] ?? "").toString().trim();
+      const receiver = (row["수령자명"] ?? "").toString().trim();
+
+      // 규칙 C: 발주처와 수령자명이 모두 "안성물류"면 주문량을 0으로 강제 변경
+      if (purchaser === "안성물류" && receiver === "안성물류") {
+        return {
+          ...row,
+          주문량: 0
+        };
       }
 
+      return row;
+    });
+  }
+
+  // ============================
+  // ★ 1. 주문량 0 행 제거 (알파 전용)
+  // ============================
+  if (selectedVendor === "알파") {
+    workingRows = workingRows.filter((row) => {
+      const raw = row["주문량"];
+
+      if (raw === null || raw === undefined || raw === "") return false;
+
       const num = Number(String(raw).replace(/,/g, "").trim() || "0");
+
       return Number.isFinite(num) && num !== 0;
     });
   }
 
+  // ============================
+  // ★ 2. 개별 행 변환 처리
+  // ============================
   const result = workingRows.map((row) => {
     const out = {};
 
     for (const field of WAYBILL_FIELDS) {
       const key = field.key;
 
-      // ✅ 보내는분주소 / 보내는분전화번호는 항상 고정값
+      // 보내는분 주소 고정
       if (key === "보내는분주소(전체, 분할)") {
         out[key] = "경기도 김포시 애기봉로 206";
         continue;
       }
 
+      // 보내는분 전화번호 고정
       if (key === "보내는분전화번호") {
         out[key] = "031-987-9495";
         continue;
       }
 
-      // ✅ 알파 전용: 발주처가 "안성물류"면 보내는분성명 = "알파 안성"
+      // 알파 전용: 발주처 = 안성물류 → 보내는분성명 = 알파 안성
       if (selectedVendor === "알파" && key === "보내는분성명") {
         const purchaser = (row["발주처"] ?? "").toString().trim();
-        if (purchaser === "안성물류") {
-          out[key] = "알파 안성";
-        } else {
-          out[key] = "";  // 다른 발주처면 비워두거나 필요시 나중에 규칙 추가
-        }
+        out[key] = purchaser === "안성물류" ? "알파 안성" : "";
         continue;
       }
 
-      // ✅ 알파 전용: 수령자 정보 매핑
+      // 알파 전용: 수령자 정보 매핑
       if (selectedVendor === "알파") {
-        // 수령자명 → 받는분성명 (보내는분성명과 헷갈리지 않도록 주의!)
+
         if (key === "받는분성명") {
           out[key] = row["수령자명"] ?? "";
           continue;
         }
 
-        // 수령자 주소 → 받는분주소(전체, 분할)
         if (key === "받는분주소(전체, 분할)") {
           out[key] = row["수령자 주소"] ?? "";
           continue;
         }
 
-        // 수령자 전화번호 / 수령자 휴대전화 → 받는분전화번호 (우선순위: 전화 → 휴대전화)
         if (key === "받는분전화번호") {
           const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
           const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
@@ -466,22 +484,18 @@ function applyRules(rows, mapping) {
           continue;
         }
 
-        // 수령자 휴대전화 → 받는분기타연락처
         if (key === "받는분기타연락처") {
           out[key] = row["수령자 휴대전화"] ?? "";
           continue;
         }
       }
 
-      // ✅ 그 외 항목들은 매핑 UI에서 선택한 컬럼대로 처리
+      // 일반 매핑 처리 (알파여도 여기로 오는 항목 있음)
       const mappedHeader = mapping[key];
 
       if (!mappedHeader) {
-        if (key === "박스수량") {
-          out[key] = 1;  // 기본 박스 수량
-        } else {
-          out[key] = "";
-        }
+        if (key === "박스수량") out[key] = 1;
+        else out[key] = "";
         continue;
       }
 
