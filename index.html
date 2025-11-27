@@ -303,7 +303,7 @@
       try {
         statusEl.textContent = "엑셀 읽는 중...";
         previewEl.innerHTML = "";
-        mappingEl.textContent = "";
+        mappingEl.textContent = "(열 정보를 분석하는 중입니다...)";
 
         const data = await file.arrayBuffer();
         const workbook = XLSX.read(data);
@@ -360,14 +360,21 @@
 
         const transformedRows = applyRules(originalRows, mapping);
 
-        const newWorksheet = XLSX.utils.json_to_sheet(transformedRows);
+        // 🔥 내부 임시 필드(_internal_qty)는 최종 결과에서 제거
+        const cleanedRows = transformedRows.map(row => {
+          const copy = { ...row };
+          delete copy["_internal_qty"];
+          return copy;
+        });
+
+        const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
         const newWorkbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
 
         XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
 
         statusConvertEl.textContent =
-          `변환 완료! 총 ${transformedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
+          `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
 
       } catch (err) {
         console.error(err);
@@ -472,152 +479,143 @@
       let workingRows = [...rows];
 
       // 0. 알파 전용 선처리: 발주처 & 수령자명 모두 "안성물류"면 주문량을 0으로 강제
-function applyRules(rows, mapping) {
-  let workingRows = [...rows];
-
-  // 0. 알파 전용 선처리: 주문량/수량 임시 보관 + 안성물류 처리
-  if (selectedVendor === "알파") {
-    workingRows = workingRows.map((row) => {
-      const purchaser = (row["발주처"] ?? "").toString().trim();
-      const receiver = (row["수령자명"] ?? "").toString().trim();
-
-      // 임시 수량 저장용 필드 (결과 엑셀에는 안 나옴)
-      // 우선순위: 수량 컬럼 있으면 그 값, 없으면 주문량 사용
-      const tempQtyRaw = row["수량"] ?? row["주문량"] ?? "";
-      const tempQty = Number(
-        String(tempQtyRaw).replace(/,/g, "").trim() || "0"
-      );
-
-      // 규칙: 발주처 & 수령자명이 모두 "안성물류"면 주문량을 0으로 강제
-      let newRow = { ...row };
-      if (purchaser === "안성물류" && receiver === "안성물류") {
-        newRow.주문량 = 0;
-      }
-
-      // 임시 수량 저장 (품목명 생성 등에서 사용할 수 있음)
-      newRow._tempQty = tempQty; // ★ 임시 보관소
-
-      return newRow;
-    });
-
-    // 1. 알파 전용: 주문량 0 행 제거
-    workingRows = workingRows.filter((row) => {
-      const raw = row["주문량"];
-
-      if (raw === null || raw === undefined || raw === "") return false;
-
-      const num = Number(String(raw).replace(/,/g, "").trim() || "0");
-      return Number.isFinite(num) && num !== 0;
-    });
-  }
-
-  // 2. 행 단위 변환
-  const result = workingRows.map((row) => {
-    const out = {};
-
-    for (const field of WAYBILL_FIELDS) {
-      const key = field.key;
-
-      // (1) 보내는분 주소/전화는 항상 고정값
-      if (key === "보내는분주소(전체, 분할)") {
-        out[key] = "경기도 김포시 애기봉로 206";
-        continue;
-      }
-
-      if (key === "보내는분전화번호") {
-        out[key] = "031-987-9495";
-        continue;
-      }
-
-      // (2) 알파 전용: 발주처 = 안성물류 ⇒ 보내는분성명 = "알파 안성"
-      if (selectedVendor === "알파" && key === "보내는분성명") {
-        const purchaser = (row["발주처"] ?? "").toString().trim();
-        out[key] = purchaser === "안성물류" ? "알파 안성" : "";
-        continue;
-      }
-
-      // (3) 알파 전용: 수령자 정보 매핑
       if (selectedVendor === "알파") {
-        if (key === "받는분성명") {
-          out[key] = row["수령자명"] ?? "";
-          continue;
-        }
+        workingRows = workingRows.map((row) => {
+          const purchaser = (row["발주처"] ?? "").toString().trim();
+          const receiver = (row["수령자명"] ?? "").toString().trim();
 
-        if (key === "받는분주소(전체, 분할)") {
-          out[key] = row["수령자 주소"] ?? "";
-          continue;
-        }
-
-        if (key === "받는분전화번호") {
-          const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
-          const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
-          out[key] = phone1 || phone2 || "";
-          continue;
-        }
-
-        if (key === "받는분기타연락처") {
-          out[key] = row["수령자 휴대전화"] ?? "";
-          continue;
-        }
+          if (purchaser === "안성물류" && receiver === "안성물류") {
+            return { ...row, 주문량: 0 };
+          }
+          return row;
+        });
       }
 
-      // (4) 알파 전용: 품목명 자동 생성 (상품코드 + 임시 수량 활용 가능)
-      if (selectedVendor === "알파" && key === "품목명") {
-        let value = "";
+      // 1. 알파 전용: 주문량 0 행 제거
+      if (selectedVendor === "알파") {
+        workingRows = workingRows.filter((row) => {
+          const raw = row["주문량"];
 
-        const code = (row["상품코드"] ?? "").toString().trim();
-        const tempQty = row._tempQty ?? 0; // ★ 여기서 임시 수량 사용 가능
+          if (raw === null || raw === undefined || raw === "") return false;
 
-        if (alphaGoodsLoaded && code) {
-          const goods = alphaGoodsByCode.get(code);
-          if (goods && goods.품목명) {
-            // 기본은 마스터 품목명 사용
-            value = goods.품목명;
+          const num = Number(String(raw).replace(/,/g, "").trim() || "0");
+          return Number.isFinite(num) && num !== 0;
+        });
+      }
 
-            // 예: 나중에 규칙이 생기면 이렇게 응용 가능
-            // value = `${goods.품목명} (${tempQty}개)` 같은 식으로
+      // 2. 행 단위 변환
+      const result = workingRows.map((row) => {
+        const out = {};
+
+        // 🔹 내부 임시 수량값 (_internal_qty) 계산 (항상 생성)
+        let internalQty = 0;
+        const qtySource = row["수량"] ?? row["주문량"];
+        if (qtySource !== null && qtySource !== undefined && qtySource !== "") {
+          const num = Number(String(qtySource).replace(/,/g, "").trim() || "0");
+          if (Number.isFinite(num)) internalQty = num;
+        }
+
+        for (const field of WAYBILL_FIELDS) {
+          const key = field.key;
+
+          // (1) 보내는분 주소/전화는 항상 고정값
+          if (key === "보내는분주소(전체, 분할)") {
+            out[key] = "경기도 김포시 애기봉로 206";
+            continue;
+          }
+
+          if (key === "보내는분전화번호") {
+            out[key] = "031-987-9495";
+            continue;
+          }
+
+          // (2) 알파 전용: 발주처 = 안성물류 ⇒ 보내는분성명 = "알파 안성"
+          if (selectedVendor === "알파" && key === "보내는분성명") {
+            const purchaser = (row["발주처"] ?? "").toString().trim();
+            out[key] = purchaser === "안성물류" ? "알파 안성" : "";
+            continue;
+          }
+
+          // (3) 알파 전용: 수령자 정보 매핑
+          if (selectedVendor === "알파") {
+            if (key === "받는분성명") {
+              out[key] = row["수령자명"] ?? "";
+              continue;
+            }
+
+            if (key === "받는분주소(전체, 분할)") {
+              out[key] = row["수령자 주소"] ?? "";
+              continue;
+            }
+
+            if (key === "받는분전화번호") {
+              const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
+              const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
+              out[key] = phone1 || phone2 || "";
+              continue;
+            }
+
+            if (key === "받는분기타연락처") {
+              out[key] = row["수령자 휴대전화"] ?? "";
+              continue;
+            }
+          }
+
+          // (4) 알파 전용: 품목명 자동 생성 (상품코드 → alpha_delivery 마스터)
+          if (selectedVendor === "알파" && key === "품목명") {
+            let value = "";
+
+            const code = (row["상품코드"] ?? "").toString().trim();
+
+            if (alphaGoodsLoaded && code) {
+              const goods = alphaGoodsByCode.get(code);
+              if (goods && goods.품목명) {
+                value = goods.품목명;
+              }
+            }
+
+            // 마스터에서 못 찾은 경우 매핑된 컬럼에서 fallback
+            if (!value) {
+              const mappedHeaderForItem = mapping[key];
+              if (mappedHeaderForItem) {
+                value = row[mappedHeaderForItem] ?? "";
+              }
+            }
+
+            out[key] = value;
+            continue;
+          }
+
+          // (5) 나머지 항목: 매핑 UI 설정대로 처리
+          const mappedHeader = mapping[key];
+
+          if (!mappedHeader) {
+            if (key === "박스수량") {
+              out[key] = 1;  // 기본 박스 수량
+            } else {
+              out[key] = "";
+            }
+            continue;
+          }
+
+          const value = row[mappedHeader];
+
+          if (key === "박스수량") {
+            const num = Number(value);
+            out[key] = Number.isFinite(num) && num > 0 ? num : 1;
+          } else {
+            out[key] = value ?? "";
           }
         }
 
-        // 마스터에서 못 찾은 경우 매핑된 컬럼에서 fallback
-        if (!value) {
-          const mappedHeaderForItem = mapping[key];
-          if (mappedHeaderForItem) {
-            value = row[mappedHeaderForItem] ?? "";
-          }
-        }
+        // 🔹 내부 임시 필드 추가 (엑셀에는 나가지 않고, 나중에 삭제됨)
+        out["_internal_qty"] = internalQty;
 
-        out[key] = value;
-        continue;
-      }
+        return out;
+      });
 
-      // (5) 나머지 항목: 매핑 UI 설정대로 처리
-      const mappedHeader = mapping[key];
-
-      if (!mappedHeader) {
-        if (key === "박스수량") {
-          out[key] = 1;  // 기본 박스 수량
-        } else {
-          out[key] = "";
-        }
-        continue;
-      }
-
-      const value = row[mappedHeader];
-
-      if (key === "박스수량") {
-        const num = Number(value);
-        out[key] = Number.isFinite(num) && num > 0 ? num : 1;
-      } else {
-        out[key] = value ?? "";
-      }
+      return result;
     }
-
-    return out;
-  });
-
-  return result;
-}
 
     // 원본 미리보기
     function showPreviewTable(rows) {
