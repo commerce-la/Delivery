@@ -198,7 +198,7 @@
     <div class="card">
       <h2>2. 품목 파일 & 주문 파일 업로드</h2>
       <p>
-        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1 등의 상품 정보가 들어 있고,<br />
+        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1, 기본, 카톤 등의 상품 정보가 들어 있고,<br />
         <strong>주문 파일</strong>에는 실제 출고할 주문 내역이 들어 있습니다.
       </p>
 
@@ -257,22 +257,22 @@
 
     // waybill 양식 고정 컬럼 정의
     const WAYBILL_FIELDS = [
-      { key: "받는분성명",             label: "받는분 성명" },
-      { key: "받는분주소(전체, 분할)",  label: "받는분 주소(전체, 분할)" },
-      { key: "받는분전화번호",         label: "받는분 전화번호" },
-      { key: "받는분기타연락처",       label: "받는분 기타 연락처" },
-      { key: "품목명",                label: "품목명" },
-      { key: "박스수량",              label: "박스 수량" },
-      { key: "기본운임",              label: "기본 운임" },
-      { key: "운임구분",              label: "운임 구분" },
-      { key: "보내는분성명",          label: "보내는분 성명" },
-      { key: "보내는분주소(전체, 분할)",label: "보내는분 주소(전체, 분할)" },
-      { key: "보내는분전화번호",      label: "보내는분 전화번호" },
-      { key: "배송메세지1",           label: "배송 메세지 1" },
-      { key: "기타1",                 label: "기타1" }
+      { key: "받는분성명",               label: "받는분 성명" },
+      { key: "받는분주소(전체, 분할)",    label: "받는분 주소(전체, 분할)" },
+      { key: "받는분전화번호",           label: "받는분 전화번호" },
+      { key: "받는분기타연락처",         label: "받는분 기타 연락처" },
+      { key: "품목명",                  label: "품목명" },
+      { key: "박스수량",                label: "박스 수량" },
+      { key: "기본운임",                label: "기본 운임" },
+      { key: "운임구분",                label: "운임 구분" },
+      { key: "보내는분성명",            label: "보내는분 성명" },
+      { key: "보내는분주소(전체, 분할)", label: "보내는분 주소(전체, 분할)" },
+      { key: "보내는분전화번호",        label: "보내는분 전화번호" },
+      { key: "배송메세지1",             label: "배송 메세지 1" },
+      { key: "기타1",                   label: "기타1" }
     ];
 
-    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1 ... })
+    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1, 기본, 카톤 ... })
     const alphaGoodsByCode = new Map();
     let alphaGoodsLoaded   = false;
 
@@ -316,25 +316,24 @@
 
         // 상품 마스터 맵 생성
         for (const row of itemRows) {
-  				const code      = (row["상품코드"]   ?? "").toString().trim();
-  				const itemName  = (row["품목명"]     ?? "").toString().trim();
-  				const units     = row["입수"];
-  				const cat1      = (row["상품분류1"]  ?? "").toString().trim();
-  				const basicFare = row["기본"];   // 🔹 품목 파일의 "기본" 컬럼
-				const carton = row["카톤"];   // 🔹 카톤 값 추가
+          const code      = (row["상품코드"]   ?? "").toString().trim();
+          const itemName  = (row["품목명"]     ?? "").toString().trim();
+          const units     = row["입수"];
+          const cat1      = (row["상품분류1"]  ?? "").toString().trim();
+          const basicFare = row["기본"];   // 기본 운임 값
+          const carton    = row["카톤"];   // 카톤 수량
 
-				alphaGoodsByCode.set(code, {
-  					상품코드: code,
-  					품목명: itemName,
-  					입수: units,
-  					상품분류1: cat1,
-  					기본: basicFare,
- 					카톤: carton   // 🔹 여기 저장!
-				});
+          if (!code) continue;
 
- 					 if (!code) continue;
-			}
-
+          alphaGoodsByCode.set(code, {
+            상품코드:   code,
+            품목명:     itemName,
+            입수:       units,
+            상품분류1:  cat1,
+            기본:       basicFare,
+            카톤:       carton
+          });
+        }
 
         alphaGoodsLoaded = alphaGoodsByCode.size > 0;
         statusItemsEl.textContent =
@@ -574,32 +573,29 @@
           internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
         }
 
+        // 카톤 규칙 적용을 위한 변수
+        let adjustedQty = internalQty; // 품목명 뒤에 붙을 최종 수량
+        let boxQty = 1;                // 박스수량 기본값
+
+        if (selectedVendor === "알파") {
+          const code = (row["상품코드"] ?? "").toString().trim();
+          if (code && alphaGoodsByCode.has(code)) {
+            const goods = alphaGoodsByCode.get(code);
+            const carton = toNumberOrZero(goods.카톤);
+
+            if (carton > 0) {
+              if (internalQty > carton) {
+                // 박스수량 = 몫
+                boxQty = Math.floor(internalQty / carton);
+                // 품목명 뒤 수량 = 카톤 값
+                adjustedQty = carton;
+              }
+            }
+          }
+        }
+
         for (const field of WAYBILL_FIELDS) {
           const key = field.key;
-
-			// (X) 알파 전용: 기본운임 = 품목 파일의 "기본" 값
-if (selectedVendor === "알파" && key === "기본운임") {
-  let value = "";
-
-  const code = (row["상품코드"] ?? "").toString().trim();
-  if (code && alphaGoodsByCode.has(code)) {
-    const goods = alphaGoodsByCode.get(code);
-    if (goods && goods.기본 !== undefined && goods.기본 !== null && goods.기본 !== "") {
-      value = goods.기본;   // 🔹 품목 파일에서 가져온 기본 값
-    }
-  }
-
-  // 혹시 품목 파일에 값이 없거나 못 찾았으면, 매핑된 주문 파일 컬럼으로 fallback
-  if (!value) {
-    const mappedHeader = mapping[key];
-    if (mappedHeader) {
-      value = row[mappedHeader] ?? "";
-    }
-  }
-
-  out[key] = value;
-  continue;
-}
 
           // (1) 보내는분 주소/전화는 항상 고정값
           if (key === "보내는분주소(전체, 분할)") {
@@ -643,28 +639,32 @@ if (selectedVendor === "알파" && key === "기본운임") {
               continue;
             }
           }
-let adjustedQty = internalQty;   // 품목명 뒤에 붙을 최종 수량
-let boxQty = 1;                  // 박스수량 기본값
 
-if (selectedVendor === "알파") {
-  const code = (row["상품코드"] ?? "").toString().trim();
-  if (code && alphaGoodsByCode.has(code)) {
-    const goods = alphaGoodsByCode.get(code);
-    const carton = toNumberOrZero(goods.카톤);
+          // (4) 알파 전용: 기본운임 = 품목 파일의 "기본" 값
+          if (selectedVendor === "알파" && key === "기본운임") {
+            let value = "";
 
-    if (carton > 0) {
-      if (internalQty > carton) {
-        // 🔹 박스수량 = 몫
-        boxQty = Math.floor(internalQty / carton);
+            const code = (row["상품코드"] ?? "").toString().trim();
+            if (code && alphaGoodsByCode.has(code)) {
+              const goods = alphaGoodsByCode.get(code);
+              if (goods && goods.기본 !== undefined && goods.기본 !== null && goods.기본 !== "") {
+                value = goods.기본;
+              }
+            }
 
-        // 🔹 품목명 뒤의 수량은 "카톤값"으로 변경
-        adjustedQty = carton;
-      }
-    }
-  }
-}
+            // 품목 파일에 없으면 주문 파일 매핑 값으로 fallback
+            if (!value) {
+              const mappedHeader = mapping[key];
+              if (mappedHeader) {
+                value = row[mappedHeader] ?? "";
+              }
+            }
 
-          // (4) 알파 전용: 품목명 = (마스터 품목명 or 매핑값) + " - " + internalQty + "EA"
+            out[key] = value;
+            continue;
+          }
+
+          // (5) 알파 전용: 품목명 = (마스터 품목명 or 매핑값) + " - " + adjustedQty + "EA"
           if (selectedVendor === "알파" && key === "품목명") {
             let baseName = "";
 
@@ -685,20 +685,27 @@ if (selectedVendor === "알파") {
               }
             }
 
-            const qty = internalQty;
-			  out[key] = `${baseName} - ${adjustedQty}EA`;
-
+            out[key] = `${baseName} - ${adjustedQty}EA`;
             continue;
           }
 
-          // (5) 나머지 항목: 매핑 UI 설정대로 처리 (주문 파일 기준)
+          // (6) 알파 전용: 박스수량 = boxQty
+          if (selectedVendor === "알파" && key === "박스수량") {
+            out[key] = boxQty;
+            continue;
+          }
+
+          // (7) 나머지 항목: 매핑 UI 설정대로 처리 (주문 파일 기준)
           const mappedHeader = mapping[key];
 
           if (!mappedHeader) {
-			if (key === "박스수량") {
-   				 out[key] = boxQty;
-    			continue;
-			}
+            if (key === "박스수량") {
+              out[key] = 1;  // 알파 외의 경우 기본 박스 수량
+            } else {
+              out[key] = "";
+            }
+            continue;
+          }
 
           const value = row[mappedHeader];
 
