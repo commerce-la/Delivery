@@ -591,29 +591,32 @@
           }
 
           // (4) 알파 전용: 품목명 자동 생성 (상품코드 → alpha_delivery 마스터)
-          if (selectedVendor === "알파" && key === "품목명") {
-            let value = "";
+if (selectedVendor === "알파" && key === "품목명") {
+    let baseName = "";
 
-            const code = (row["상품코드"] ?? "").toString().trim();
+    const code = (row["상품코드"] ?? "").toString().trim();
 
-            if (alphaGoodsLoaded && code) {
-              const goods = alphaGoodsByCode.get(code);
-              if (goods && goods.품목명) {
-                value = goods.품목명;
-              }
-            }
+    // 1) alpha_delivery.html 기준으로 품목명 찾기
+    if (alphaGoodsLoaded && code) {
+        const goods = alphaGoodsByCode.get(code);
+        if (goods && goods.품목명) {
+            baseName = goods.품목명;
+        }
+    }
 
-            // 마스터에서 못 찾은 경우 매핑된 컬럼에서 fallback
-            if (!value) {
-              const mappedHeaderForItem = mapping[key];
-              if (mappedHeaderForItem) {
-                value = row[mappedHeaderForItem] ?? "";
-              }
-            }
+    // 2) 못 찾을 경우 매핑 컬럼 사용
+    if (!baseName) {
+        const mappedHeader = mapping[key];
+        if (mappedHeader) {
+            baseName = row[mappedHeader] ?? "";
+        }
+    }
 
-            out[key] = value;
-            continue;
-          }
+    // 3) 최종: 품목명 + " - " + 임시수량 + "EA"
+    const qty = out["_internal_qty"] ?? 0;
+    out[key] = `${baseName} - ${qty}EA`;
+    continue;
+}
 
           // (5) 나머지 항목: 매핑 UI 설정대로 처리
           const mappedHeader = mapping[key];
