@@ -321,16 +321,18 @@
   				const units     = row["입수"];
   				const cat1      = (row["상품분류1"]  ?? "").toString().trim();
   				const basicFare = row["기본"];   // 🔹 품목 파일의 "기본" 컬럼
+				const carton = row["카톤"];   // 🔹 카톤 값 추가
+
+				alphaGoodsByCode.set(code, {
+  					상품코드: code,
+  					품목명: itemName,
+  					입수: units,
+  					상품분류1: cat1,
+  					기본: basicFare,
+ 					카톤: carton   // 🔹 여기 저장!
+				});
 
  					 if (!code) continue;
-
-  				alphaGoodsByCode.set(code, {
-    				상품코드:   code,
-    				품목명:     itemName,
-    				입수:       units,
-    				상품분류1:  cat1,
-				    기본:       basicFare   // 🔹 기본운임으로 쓸 값
-  				});
 			}
 
 
@@ -641,6 +643,26 @@ if (selectedVendor === "알파" && key === "기본운임") {
               continue;
             }
           }
+let adjustedQty = internalQty;   // 품목명 뒤에 붙을 최종 수량
+let boxQty = 1;                  // 박스수량 기본값
+
+if (selectedVendor === "알파") {
+  const code = (row["상품코드"] ?? "").toString().trim();
+  if (code && alphaGoodsByCode.has(code)) {
+    const goods = alphaGoodsByCode.get(code);
+    const carton = toNumberOrZero(goods.카톤);
+
+    if (carton > 0) {
+      if (internalQty > carton) {
+        // 🔹 박스수량 = 몫
+        boxQty = Math.floor(internalQty / carton);
+
+        // 🔹 품목명 뒤의 수량은 "카톤값"으로 변경
+        adjustedQty = carton;
+      }
+    }
+  }
+}
 
           // (4) 알파 전용: 품목명 = (마스터 품목명 or 매핑값) + " - " + internalQty + "EA"
           if (selectedVendor === "알파" && key === "품목명") {
