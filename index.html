@@ -694,13 +694,10 @@ if (selectedVendor === "알파") {
           const mappedHeader = mapping[key];
 
           if (!mappedHeader) {
-            if (key === "박스수량") {
-              out[key] = 1;  // 기본 박스 수량
-            } else {
-              out[key] = "";
-            }
-            continue;
-          }
+			if (key === "박스수량") {
+   				 out[key] = boxQty;
+    			continue;
+			}
 
           const value = row[mappedHeader];
 
