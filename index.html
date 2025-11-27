@@ -316,19 +316,23 @@
 
         // 상품 마스터 맵 생성
         for (const row of itemRows) {
-          const code      = (row["상품코드"]   ?? "").toString().trim();
-          const itemName  = (row["품목명"]     ?? "").toString().trim();
-          const units     = row["입수"];
-          const cat1      = (row["상품분류1"]  ?? "").toString().trim();
-          if (!code) continue;
+  				const code      = (row["상품코드"]   ?? "").toString().trim();
+  				const itemName  = (row["품목명"]     ?? "").toString().trim();
+  				const units     = row["입수"];
+  				const cat1      = (row["상품분류1"]  ?? "").toString().trim();
+  				const basicFare = row["기본"];   // 🔹 품목 파일의 "기본" 컬럼
 
-          alphaGoodsByCode.set(code, {
-            상품코드:   code,
-            품목명:     itemName,
-            입수:       units,
-            상품분류1:  cat1
-          });
-        }
+ 					 if (!code) continue;
+
+  				alphaGoodsByCode.set(code, {
+    				상품코드:   code,
+    				품목명:     itemName,
+    				입수:       units,
+    				상품분류1:  cat1,
+				    기본:       basicFare   // 🔹 기본운임으로 쓸 값
+  				});
+			}
+
 
         alphaGoodsLoaded = alphaGoodsByCode.size > 0;
         statusItemsEl.textContent =
