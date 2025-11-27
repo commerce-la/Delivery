@@ -590,32 +590,32 @@
             }
           }
 
-          // (4) 알파 전용: 품목명 자동 생성 (상품코드 → alpha_delivery 마스터)
+// (4) 알파 전용: 품목명 자동 생성 (상품코드 → alpha_delivery 마스터)
 if (selectedVendor === "알파" && key === "품목명") {
-    let baseName = "";
+  let baseName = "";
 
-    const code = (row["상품코드"] ?? "").toString().trim();
+  const code = (row["상품코드"] ?? "").toString().trim();
 
-    // 1) alpha_delivery.html 기준으로 품목명 찾기
-    if (alphaGoodsLoaded && code) {
-        const goods = alphaGoodsByCode.get(code);
-        if (goods && goods.품목명) {
-            baseName = goods.품목명;
-        }
+  // 1) alpha_delivery.html 기준으로 품목명 찾기
+  if (alphaGoodsLoaded && code) {
+    const goods = alphaGoodsByCode.get(code);
+    if (goods && goods.품목명) {
+      baseName = goods.품목명;
     }
+  }
 
-    // 2) 못 찾을 경우 매핑 컬럼 사용
-    if (!baseName) {
-        const mappedHeader = mapping[key];
-        if (mappedHeader) {
-            baseName = row[mappedHeader] ?? "";
-        }
+  // 2) 못 찾을 경우 매핑 컬럼 사용
+  if (!baseName) {
+    const mappedHeaderForItem = mapping[key];
+    if (mappedHeaderForItem) {
+      baseName = row[mappedHeaderForItem] ?? "";
     }
+  }
 
-    // 3) 최종: 품목명 + " - " + 임시수량 + "EA"
-    const qty = out["_internal_qty"] ?? 0;
-    out[key] = `${baseName} - ${qty}EA`;
-    continue;
+  // 3) 최종: 품목명 + " - " + (임시 수량) + "EA"
+  const qty = internalQty;  // ✅ 여기! out["_internal_qty"] 말고 internalQty 사용
+  out[key] = `${baseName} - ${qty}EA`;
+  continue;
 }
 
           // (5) 나머지 항목: 매핑 UI 설정대로 처리
