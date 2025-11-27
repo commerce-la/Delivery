@@ -198,7 +198,7 @@
     <div class="card">
       <h2>2. 품목 파일 & 주문 파일 업로드</h2>
       <p>
-        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1, 기본, 카톤 등의 상품 정보가 들어 있고,<br />
+        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1, 기본, 카톤, 운임 등의 상품 정보가 들어 있고,<br />
         <strong>주문 파일</strong>에는 실제 출고할 주문 내역이 들어 있습니다.
       </p>
 
@@ -272,7 +272,7 @@
       { key: "기타1",                   label: "기타1" }
     ];
 
-    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1, 기본, 카톤 ... })
+    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1, 기본, 카톤, 운임 ... })
     const alphaGoodsByCode = new Map();
     let alphaGoodsLoaded   = false;
 
@@ -322,9 +322,9 @@
           const cat1      = (row["상품분류1"]  ?? "").toString().trim();
           const basicFare = row["기본"];   // 기본 운임 값
           const carton    = row["카톤"];   // 카톤 수량
-          const fareShip  = row["운임"];   // 🔹 운임 값 (품목 파일 컬럼명: '운임')
+          const fareShip  = row["운임"];   // 운임 값
 
-          if (!code) continue;//
+          if (!code) continue;
 
           alphaGoodsByCode.set(code, {
             상품코드:   code,
@@ -333,9 +333,8 @@
             상품분류1:  cat1,
             기본:       basicFare,
             카톤:       carton,
-            운임:       fareShip    // 🔹 추가
+            운임:       fareShip
           });
-
         }
 
         alphaGoodsLoaded = alphaGoodsByCode.size > 0;
@@ -511,7 +510,8 @@
 
     // 숫자 변환 유틸
     function toNumberOrZero(value) {
-      if (value === null || value === undefined || value === "") return 0;
+      if (value === null || value === undefined) return 0;
+      if (value === "") return 0;
       const num = Number(String(value).replace(/,/g, "").trim() || "0");
       return Number.isFinite(num) ? num : 0;
     }
@@ -586,13 +586,11 @@
             const goods = alphaGoodsByCode.get(code);
             const carton = toNumberOrZero(goods.카톤);
 
-            if (carton > 0) {
-              if (internalQty > carton) {
-                // 박스수량 = 몫
-                boxQty = Math.floor(internalQty / carton);
-                // 품목명 뒤 수량 = 카톤 값
-                adjustedQty = carton;
-              }
+            if (carton > 0 && internalQty > carton) {
+              // 박스수량 = 몫
+              boxQty = Math.floor(internalQty / carton);
+              // 품목명 뒤 수량 = 카톤 값
+              adjustedQty = carton;
             }
           }
         }
@@ -644,41 +642,49 @@
           }
 
           // (4) 알파 전용: 기본운임
-// - 기본은 품목 파일의 "기본" 값
-// - 단, waybill 수량(계산된 internalQty)이 품목 파일 "카톤" 값과 같으면
-//   → 품목 파일의 "운임" 값을 사용
-if (selectedVendor === "알파" && key === "기본운임") {
-  let value = "";
+          // - 기본은 품목 파일의 "기본" 값
+          // - 단, 계산된 수량(internalQty)이 품목 파일 "카톤" 값과 같으면
+          //   → 품목 파일의 "운임" 값을 사용
+          if (selectedVendor === "알파" && key === "기본운임") {
+            let value = "";
 
-  const code = (row["상품코드"] ?? "").toString().trim();
-  if (code && alphaGoodsByCode.has(code)) {
-    const goods      = alphaGoodsByCode.get(code);
-    const carton     = toNumberOrZero(goods.카톤);
-    const basicFare  = goods.기본;
-    const shipFare   = goods.운임;
+            const code = (row["상품코드"] ?? "").toString().trim();
+            if (code && alphaGoodsByCode.has(code)) {
+              const goods      = alphaGoodsByCode.get(code);
+              const carton     = toNumberOrZero(goods.카톤);
+              const basicFare  = goods.기본;
+              const shipFare   = goods.운임;
 
-    // 🔹 비교 기준이 되는 수량: 계산된 internalQty
-    //    (입수*주문량 또는 아트메이트/카톤 로직 다 적용된 "계산된 수량")
-    if (carton > 0 && internalQty === carton && shipFare !== undefined && shipFare !== null && shipFare !== "") {
-      // 수량 == 카톤 → 운임 사용
-      value = shipFare;
-    } else if (basicFare !== undefined && basicFare !== null && basicFare !== "") {
-      // 그 외에는 기본 사용
-      value = basicFare;
-    }
-  }
+              if (
+                carton > 0 &&
+                internalQty === carton &&
+                shipFare !== undefined &&
+                shipFare !== null &&
+                shipFare !== ""
+              ) {
+                // 수량 == 카톤 → 운임 사용
+                value = shipFare;
+              } else if (
+                basicFare !== undefined &&
+                basicFare !== null &&
+                basicFare !== ""
+              ) {
+                // 그 외에는 기본 사용
+                value = basicFare;
+              }
+            }
 
-  // 품목 파일에서 아무 값도 못 찾으면 주문 파일 매핑 값으로 fallback
-  if (!value) {
-    const mappedHeader = mapping[key];
-    if (mappedHeader) {
-      value = row[mappedHeader] ?? "";
-    }
-  }
+            // 품목 파일에서 아무 값도 못 찾으면 주문 파일 매핑 값으로 fallback
+            if (!value) {
+              const mappedHeader = mapping[key];
+              if (mappedHeader) {
+                value = row[mappedHeader] ?? "";
+              }
+            }
 
-  out[key] = value;
-  continue;
-}
+            out[key] = value;
+            continue;
+          }
 
           // (5) 알파 전용: 품목명 = (마스터 품목명 or 매핑값) + " - " + adjustedQty + "EA"
           if (selectedVendor === "알파" && key === "품목명") {
@@ -698,7 +704,8 @@ if (selectedVendor === "알파" && key === "기본운임") {
               const mappedHeaderForItem = mapping[key];
               if (mappedHeaderForItem) {
                 baseName = row[mappedHeaderForItem] ?? "";
-      
+              }
+            }
 
             out[key] = `${baseName} - ${adjustedQty}EA`;
             continue;
@@ -715,7 +722,7 @@ if (selectedVendor === "알파" && key === "기본운임") {
 
           if (!mappedHeader) {
             if (key === "박스수량") {
-              out[key] = 1;  // 알파 외의 경우 기본 박스 수량
+              out[key] = 1;  // 알파 외 업체용 기본 박스수량
             } else {
               out[key] = "";
             }
