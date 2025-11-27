@@ -358,14 +358,21 @@
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-        const transformedRows = applyRules(originalRows, mapping);
+      const transformedRows = applyRules(originalRows, mapping);
 
-        // 🔥 내부 임시 필드(_internal_qty)는 최종 결과에서 제거
-        const cleanedRows = transformedRows.map(row => {
-          const copy = { ...row };
-          delete copy["_internal_qty"];
-          return copy;
-        });
+      // 🔥 정렬: 받는분성명 기준 오름차순
+      transformedRows.sort((a, b) => {
+        const nameA = (a["받는분성명"] ?? "").toString().trim();
+        const nameB = (b["받는분성명"] ?? "").toString().trim();
+        return nameA.localeCompare(nameB, "ko"); // 한국어 오름차순
+      });
+
+      // 🔥 내부 임시 필드 제거
+      const cleanedRows = transformedRows.map(row => {
+        const copy = { ...row };
+        delete copy["_internal_qty"];
+        return copy;
+      });
 
         const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
         const newWorkbook = XLSX.utils.book_new();
