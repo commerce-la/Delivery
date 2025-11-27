@@ -512,37 +512,36 @@
       }
 
       // 2. 행 단위 변환
-      const result = workingRows.map((row) => {
-        const out = {};
+const result = workingRows.map((row) => {
+  const out = {};
 
-        // 🔹 내부 임시 수량값 (_internal_qty) 계산 (항상 생성)
-        let internalQty = 0;
+  let internalQty = 0;
 
-        if (selectedVendor === "알파") {
-          // 알파 전용 규칙:
-          // 기본: 입수 * 주문량
-          // 단, alpha_delivery 상품분류1 = "아트메이트" 이면 주문량만 사용
-          const orderQty = toNumberOrZero(row["주문량"]);
-          const unitsPerBox = toNumberOrZero(row["입수"]);
-          let isArtMate = false;
+  if (selectedVendor === "알파") {
+    const orderQty = toNumberOrZero(row["주문량"]);
+    const unitsPerBox = toNumberOrZero(row["입수"]);
+    let isArtMate = false;
 
-          const code = (row["상품코드"] ?? "").toString().trim();
-          if (alphaGoodsLoaded && code) {
-            const goods = alphaGoodsByCode.get(code);
-            if (goods && goods.상품분류1 === "아트메이트") {
-              isArtMate = true;
-            }
-          }
+    const code = (row["상품코드"] ?? "").toString().trim();
+    if (alphaGoodsLoaded && code) {
+      const goods = alphaGoodsByCode.get(code);
+      if (goods && goods.상품분류1 === "அ트메이트") {
+        isArtMate = true;
+      }
+    }
 
-          if (isArtMate) {
-            internalQty = orderQty;
-          } else {
-            internalQty = unitsPerBox * orderQty;
-          }
-        } else {
-          // 알파 외 업체에 대한 기본 동작: 주문량 기준으로 저장
-          internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
-        }
+    internalQty = isArtMate ? orderQty : unitsPerBox * orderQty;
+  } else {
+    internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
+  }
+
+  for (const field of WAYBILL_FIELDS) {
+    // ... 여기 안에 위에 수정한 품목명 블록 포함 ...
+  }
+
+  out["_internal_qty"] = internalQty;  // 이건 그대로 유지 (나중에 참조용)
+  return out;
+});
 
         for (const field of WAYBILL_FIELDS) {
           const key = field.key;
