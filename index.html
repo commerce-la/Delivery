@@ -165,7 +165,7 @@
 </head>
 <body>
   <header>
-    <h1>엑셀 → waybill 변환 도구</h1>
+    <h1>엑셀 → waybill 변환 도구 (GitHub Pages)</h1>
   </header>
 
   <main>
@@ -202,7 +202,9 @@
             <option value="">선택하세요</option>
             <option value="알파">알파</option>
           </select>
-          <div class="mapping-hint">* 현재는 "알파" 선택만 지원합니다.</div>
+          <div class="mapping-hint">
+            * "알파"를 선택하면 알파 전용 변환 규칙과 상품 정보(품목명 자동 생성)를 사용합니다.
+          </div>
         </div>
 
         <hr style="margin: 20px 0; border-color: rgba(148,163,184,0.3);" />
@@ -230,59 +232,8 @@
     </div>
   </main>
 
-  <!-- 🔻 스크립트는 꼭 body 맨 끝에 두세요 🔻 -->
+  <!-- 🔻 스크립트는 body 맨 끝에 둔다 🔻 -->
   <script>
-    // 알파 상품 마스터 (상품코드 → { 품목명, 상품명, 규격 ... })
-    const alphaGoodsByCode = new Map();
-    let alphaGoodsLoaded = false;
-    let alphaGoodsLoadingError = null;
-
-vendorSelect.addEventListener("change", async (e) => {
-  selectedVendor = e.target.value;
-
-  // 업체명이 "알파"로 선택된 경우에만 마스터 로딩 시도
-  if (selectedVendor === "알파" && !alphaGoodsLoaded && !alphaGoodsLoadingError) {
-    try {
-      statusConvertEl.textContent = "알파 상품 정보 로딩 중...";
-      await loadAlphaGoods();
-      if (alphaGoodsLoaded) {
-        statusConvertEl.textContent = "알파 상품 정보 로딩 완료.";
-      } else {
-        statusConvertEl.textContent = "알파 상품 정보를 불러오지 못했습니다.";
-      }
-    } catch (err) {
-      statusConvertEl.textContent = "알파 상품 정보 로딩 중 오류가 발생했습니다.";
-    }
-  }
-});
-
-      // alpha_delivery 컬럼 순서 가정:
-      // 0: 상품코드, 1: 품목명, 2: 바코드, 3: 상품명, 4: 규격, 5: 단위, ...
-      const code = tds[0].textContent.trim();
-      const itemName = tds[1].textContent.trim();
-      const barcode = tds[2].textContent.trim();
-      const productName = tds[3].textContent.trim();
-      const spec = tds[4].textContent.trim();
-
-      if (!code) return;
-
-      alphaGoodsByCode.set(code, {
-        상품코드: code,
-        품목명: itemName,
-        바코드: barcode,
-        상품명: productName,
-        규격: spec
-      });
-    });
-
-    alphaGoodsLoaded = true;
-    console.log("알파 상품 마스터 로딩 완료. 총 건수:", alphaGoodsByCode.size);
-  } catch (err) {
-    console.error("알파 상품 마스터 로딩 실패:", err);
-    alphaGoodsLoadingError = err;
-  }
-}
-
     const fileInput = document.getElementById("file-input");
     const convertBtn = document.getElementById("convert-btn");
     const statusEl = document.getElementById("status");
@@ -312,9 +263,29 @@ vendorSelect.addEventListener("change", async (e) => {
       { key: "기타1", label: "기타1" }
     ];
 
+    // 알파 상품 마스터 (상품코드 → { 품목명, 상품명, 규격 ... })
+    const alphaGoodsByCode = new Map();
+    let alphaGoodsLoaded = false;
+    let alphaGoodsLoadingError = null;
+
     // 업체명 선택 이벤트
-    vendorSelect.addEventListener("change", (e) => {
+    vendorSelect.addEventListener("change", async (e) => {
       selectedVendor = e.target.value;
+
+      if (selectedVendor === "알파" && !alphaGoodsLoaded && !alphaGoodsLoadingError) {
+        try {
+          statusConvertEl.textContent = "알파 상품 정보 로딩 중...";
+          await loadAlphaGoods();
+          if (alphaGoodsLoaded) {
+            statusConvertEl.textContent = "알파 상품 정보 로딩 완료.";
+          } else {
+            statusConvertEl.textContent = "알파 상품 정보를 불러오지 못했습니다.";
+          }
+        } catch (err) {
+          console.error(err);
+          statusConvertEl.textContent = "알파 상품 정보 로딩 중 오류가 발생했습니다.";
+        }
+      }
     });
 
     // 파일 업로드 이벤트
@@ -364,7 +335,7 @@ vendorSelect.addEventListener("change", async (e) => {
       }
     });
 
-    // 변환 버튼
+    // 변환 버튼 클릭
     convertBtn.addEventListener("click", () => {
       statusConvertEl.textContent = "";
 
@@ -404,6 +375,53 @@ vendorSelect.addEventListener("change", async (e) => {
       }
     });
 
+    // 🔹 알파 상품 마스터 로딩 (업체명 = 알파일 때만 호출)
+    async function loadAlphaGoods() {
+      try {
+        const res = await fetch("https://commerce-la.github.io/Delivery/alpha_delivery.html");
+        const text = await res.text();
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, "text/html");
+
+        const table = doc.querySelector("table.data-table");
+        if (!table) {
+          throw new Error("alpha_delivery.html에서 data-table을 찾지 못했습니다.");
+        }
+
+        const rows = Array.from(table.querySelectorAll("tbody tr"));
+        rows.forEach(tr => {
+          const tds = tr.querySelectorAll("td");
+          if (tds.length === 0) return;
+
+          // alpha_delivery.html 컬럼 순서 가정:
+          // 0: 상품코드, 1: 품목명, 2: 바코드, 3: 상품명, 4: 규격, ...
+          const code = tds[0].textContent.trim();
+          const itemName = tds[1].textContent.trim();
+          const barcode = tds[2].textContent.trim();
+          const productName = tds[3].textContent.trim();
+          const spec = tds[4].textContent.trim();
+
+          if (!code) return;
+
+          alphaGoodsByCode.set(code, {
+            상품코드: code,
+            품목명: itemName,
+            바코드: barcode,
+            상품명: productName,
+            규격: spec
+          });
+        });
+
+        alphaGoodsLoaded = true;
+        alphaGoodsLoadingError = null;
+        console.log("알파 상품 마스터 로딩 완료. 건수:", alphaGoodsByCode.size);
+      } catch (err) {
+        console.error("알파 상품 마스터 로딩 실패:", err);
+        alphaGoodsLoadingError = err;
+      }
+    }
+
     // 매핑 UI 만들기
     function buildMappingUI(headers) {
       if (!headers || headers.length === 0) {
@@ -437,7 +455,7 @@ vendorSelect.addEventListener("change", async (e) => {
       mappingEl.innerHTML = html;
     }
 
-    // 셀렉트 박스에서 매핑 정보 가져오기
+    // 매핑 정보 읽기
     function getMapping() {
       const mapping = {};
       for (const field of WAYBILL_FIELDS) {
@@ -449,148 +467,137 @@ vendorSelect.addEventListener("change", async (e) => {
       return mapping;
     }
 
-function applyRules(rows, mapping) {
-  let workingRows = [...rows];
+    // 🔹 핵심 변환 로직 (알파 전용 규칙 + 공통 규칙)
+    function applyRules(rows, mapping) {
+      let workingRows = [...rows];
 
-  // ============================
-  // ★ 0. 알파 전용 선처리 규칙
-  // ============================
-  if (selectedVendor === "알파") {
-    workingRows = workingRows.map((row) => {
-      const purchaser = (row["발주처"] ?? "").toString().trim();
-      const receiver = (row["수령자명"] ?? "").toString().trim();
-
-      // 규칙 C: 발주처와 수령자명이 모두 "안성물류"면 주문량을 0으로 강제 변경
-      if (purchaser === "안성물류" && receiver === "안성물류") {
-        return {
-          ...row,
-          주문량: 0
-        };
-      }
-
-      return row;
-    });
-  }
-
-  // ============================
-  // ★ 1. 주문량 0 행 제거 (알파 전용)
-  // ============================
-  if (selectedVendor === "알파") {
-    workingRows = workingRows.filter((row) => {
-      const raw = row["주문량"];
-
-      if (raw === null || raw === undefined || raw === "") return false;
-
-      const num = Number(String(raw).replace(/,/g, "").trim() || "0");
-
-      return Number.isFinite(num) && num !== 0;
-    });
-  }
-
-  // ============================
-  // ★ 2. 개별 행 변환 처리
-  // ============================
-  const result = workingRows.map((row) => {
-    const out = {};
-
-    for (const field of WAYBILL_FIELDS) {
-      const key = field.key;
-
-      // 보내는분 주소 고정
-      if (key === "보내는분주소(전체, 분할)") {
-        out[key] = "경기도 김포시 애기봉로 206";
-        continue;
-      }
-
-      // 보내는분 전화번호 고정
-      if (key === "보내는분전화번호") {
-        out[key] = "031-987-9495";
-        continue;
-      }
-
-      // 알파 전용: 발주처 = 안성물류 → 보내는분성명 = 알파 안성
-      if (selectedVendor === "알파" && key === "보내는분성명") {
-        const purchaser = (row["발주처"] ?? "").toString().trim();
-        out[key] = purchaser === "안성물류" ? "알파 안성" : "";
-        continue;
-      }
-
-      // 알파 전용: 수령자 정보 매핑
+      // 0. 알파 전용 선처리: 발주처 & 수령자명 모두 "안성물류"면 주문량을 0으로 강제
       if (selectedVendor === "알파") {
+        workingRows = workingRows.map((row) => {
+          const purchaser = (row["발주처"] ?? "").toString().trim();
+          const receiver = (row["수령자명"] ?? "").toString().trim();
 
-        if (key === "받는분성명") {
-          out[key] = row["수령자명"] ?? "";
-          continue;
-        }
-
-        if (key === "받는분주소(전체, 분할)") {
-          out[key] = row["수령자 주소"] ?? "";
-          continue;
-        }
-
-        if (key === "받는분전화번호") {
-          const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
-          const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
-          out[key] = phone1 || phone2 || "";
-          continue;
-        }
-
-        if (key === "받는분기타연락처") {
-          out[key] = row["수령자 휴대전화"] ?? "";
-          continue;
-        }
+          if (purchaser === "안성물류" && receiver === "안성물류") {
+            return { ...row, 주문량: 0 };
+          }
+          return row;
+        });
       }
 
-      // ✅ 알파 전용: 품목명 자동 생성 (상품코드 기준)
-      if (selectedVendor === "알파" && key === "품목명") {
-        let value = "";
+      // 1. 알파 전용: 주문량 0 행 제거
+      if (selectedVendor === "알파") {
+        workingRows = workingRows.filter((row) => {
+          const raw = row["주문량"];
 
-        // 1) 입력 엑셀의 "상품코드" 컬럼에서 코드 가져오기 (이름 다르면 여기 문자열 수정)
-        const code = (row["상품코드"] ?? "").toString().trim();
+          if (raw === null || raw === undefined || raw === "") return false;
 
-        if (alphaGoodsLoaded && code) {
-          const goods = alphaGoodsByCode.get(code);
-          if (goods && goods.품목명) {
-            value = goods.품목명;
+          const num = Number(String(raw).replace(/,/g, "").trim() || "0");
+          return Number.isFinite(num) && num !== 0;
+        });
+      }
+
+      // 2. 행 단위 변환
+      const result = workingRows.map((row) => {
+        const out = {};
+
+        for (const field of WAYBILL_FIELDS) {
+          const key = field.key;
+
+          // (1) 보내는분 주소/전화는 항상 고정값
+          if (key === "보내는분주소(전체, 분할)") {
+            out[key] = "경기도 김포시 애기봉로 206";
+            continue;
           }
-        }
 
-        // 2) 만약 마스터에 없거나 아직 로딩 안됐으면, 기존 매핑에서 fallback
-        if (!value) {
+          if (key === "보내는분전화번호") {
+            out[key] = "031-987-9495";
+            continue;
+          }
+
+          // (2) 알파 전용: 발주처 = 안성물류 ⇒ 보내는분성명 = "알파 안성"
+          if (selectedVendor === "알파" && key === "보내는분성명") {
+            const purchaser = (row["발주처"] ?? "").toString().trim();
+            out[key] = purchaser === "안성물류" ? "알파 안성" : "";
+            continue;
+          }
+
+          // (3) 알파 전용: 수령자 정보 매핑
+          if (selectedVendor === "알파") {
+            if (key === "받는분성명") {
+              out[key] = row["수령자명"] ?? "";
+              continue;
+            }
+
+            if (key === "받는분주소(전체, 분할)") {
+              out[key] = row["수령자 주소"] ?? "";
+              continue;
+            }
+
+            if (key === "받는분전화번호") {
+              const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
+              const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
+              out[key] = phone1 || phone2 || "";
+              continue;
+            }
+
+            if (key === "받는분기타연락처") {
+              out[key] = row["수령자 휴대전화"] ?? "";
+              continue;
+            }
+          }
+
+          // (4) 알파 전용: 품목명 자동 생성 (상품코드 → alpha_delivery 마스터)
+          if (selectedVendor === "알파" && key === "품목명") {
+            let value = "";
+
+            const code = (row["상품코드"] ?? "").toString().trim();
+
+            if (alphaGoodsLoaded && code) {
+              const goods = alphaGoodsByCode.get(code);
+              if (goods && goods.품목명) {
+                value = goods.품목명;
+              }
+            }
+
+            // 마스터에서 못 찾은 경우 매핑된 컬럼에서 fallback
+            if (!value) {
+              const mappedHeaderForItem = mapping[key];
+              if (mappedHeaderForItem) {
+                value = row[mappedHeaderForItem] ?? "";
+              }
+            }
+
+            out[key] = value;
+            continue;
+          }
+
+          // (5) 나머지 항목: 매핑 UI 설정대로 처리
           const mappedHeader = mapping[key];
-          if (mappedHeader) {
-            value = row[mappedHeader] ?? "";
+
+          if (!mappedHeader) {
+            if (key === "박스수량") {
+              out[key] = 1;  // 기본 박스 수량
+            } else {
+              out[key] = "";
+            }
+            continue;
+          }
+
+          const value = row[mappedHeader];
+
+          if (key === "박스수량") {
+            const num = Number(value);
+            out[key] = Number.isFinite(num) && num > 0 ? num : 1;
+          } else {
+            out[key] = value ?? "";
           }
         }
 
-        out[key] = value;
-        continue;
-      }
+        return out;
+      });
 
-      // 일반 매핑 처리 (알파여도 여기로 오는 항목 있음)
-      const mappedHeader = mapping[key];
-
-      if (!mappedHeader) {
-        if (key === "박스수량") out[key] = 1;
-        else out[key] = "";
-        continue;
-      }
-
-      const value = row[mappedHeader];
-
-      if (key === "박스수량") {
-        const num = Number(value);
-        out[key] = Number.isFinite(num) && num > 0 ? num : 1;
-      } else {
-        out[key] = value ?? "";
-      }
+      return result;
     }
-
-    return out;
-  });
-
-  return result;
-}
 
     // 원본 미리보기
     function showPreviewTable(rows) {
@@ -630,9 +637,6 @@ function applyRules(rows, mapping) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
     }
-
- loadAlphaGoods();
-   
   </script>
 </body>
 </html>
