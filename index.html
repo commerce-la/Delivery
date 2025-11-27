@@ -232,6 +232,58 @@
 
   <!-- 🔻 스크립트는 꼭 body 맨 끝에 두세요 🔻 -->
   <script>
+    // 알파 상품 마스터 (상품코드 → { 품목명, 상품명, 규격 ... })
+    const alphaGoodsByCode = new Map();
+    let alphaGoodsLoaded = false;
+    let alphaGoodsLoadingError = null;
+
+    async function loadAlphaGoods() {
+  try {
+    // 같은 도메인에서 제공되는 alpha_delivery.html을 불러옴
+    const res = await fetch("https://commerce-la.github.io/Delivery/alpha_delivery.html");
+    const text = await res.text();
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+
+    // 우리가 만든 alpha_delivery.html 은 table.data-table 구조라고 가정
+    const table = doc.querySelector("table.data-table");
+    if (!table) {
+      throw new Error("alpha_delivery.html에서 data-table을 찾지 못했습니다.");
+    }
+
+    const rows = Array.from(table.querySelectorAll("tbody tr"));
+    rows.forEach(tr => {
+      const tds = tr.querySelectorAll("td");
+      if (tds.length === 0) return;
+
+      // alpha_delivery 컬럼 순서 가정:
+      // 0: 상품코드, 1: 품목명, 2: 바코드, 3: 상품명, 4: 규격, 5: 단위, ...
+      const code = tds[0].textContent.trim();
+      const itemName = tds[1].textContent.trim();
+      const barcode = tds[2].textContent.trim();
+      const productName = tds[3].textContent.trim();
+      const spec = tds[4].textContent.trim();
+
+      if (!code) return;
+
+      alphaGoodsByCode.set(code, {
+        상품코드: code,
+        품목명: itemName,
+        바코드: barcode,
+        상품명: productName,
+        규격: spec
+      });
+    });
+
+    alphaGoodsLoaded = true;
+    console.log("알파 상품 마스터 로딩 완료. 총 건수:", alphaGoodsByCode.size);
+  } catch (err) {
+    console.error("알파 상품 마스터 로딩 실패:", err);
+    alphaGoodsLoadingError = err;
+  }
+}
+
     const fileInput = document.getElementById("file-input");
     const convertBtn = document.getElementById("convert-btn");
     const statusEl = document.getElementById("status");
@@ -490,6 +542,32 @@ function applyRules(rows, mapping) {
         }
       }
 
+      // ✅ 알파 전용: 품목명 자동 생성 (상품코드 기준)
+      if (selectedVendor === "알파" && key === "품목명") {
+        let value = "";
+
+        // 1) 입력 엑셀의 "상품코드" 컬럼에서 코드 가져오기 (이름 다르면 여기 문자열 수정)
+        const code = (row["상품코드"] ?? "").toString().trim();
+
+        if (alphaGoodsLoaded && code) {
+          const goods = alphaGoodsByCode.get(code);
+          if (goods && goods.품목명) {
+            value = goods.품목명;
+          }
+        }
+
+        // 2) 만약 마스터에 없거나 아직 로딩 안됐으면, 기존 매핑에서 fallback
+        if (!value) {
+          const mappedHeader = mapping[key];
+          if (mappedHeader) {
+            value = row[mappedHeader] ?? "";
+          }
+        }
+
+        out[key] = value;
+        continue;
+      }
+
       // 일반 매핑 처리 (알파여도 여기로 오는 항목 있음)
       const mappedHeader = mapping[key];
 
@@ -553,6 +631,9 @@ function applyRules(rows, mapping) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
     }
+
+ loadAlphaGoods();
+   
   </script>
 </body>
 </html>
