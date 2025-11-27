@@ -61,7 +61,7 @@
     }
 
     .file-input {
-      margin: 16px 0;
+      margin: 8px 0 16px;
     }
 
     input[type="file"] {
@@ -85,7 +85,7 @@
     }
 
     .status {
-      margin-top: 12px;
+      margin-top: 8px;
       font-size: 13px;
       color: #a5b4fc;
       min-height: 18px;
@@ -95,7 +95,7 @@
       margin-top: 24px;
       font-size: 13px;
       color: #e5e7eb;
-      max-height: 220px;
+      max-height: 260px;
       overflow: auto;
       border-top: 1px solid rgba(148, 163, 184, 0.4);
       padding-top: 16px;
@@ -161,67 +161,70 @@
       margin-top: 0;
       margin-bottom: 8px;
     }
+
+    .sub-status {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+      min-height: 16px;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>엑셀 → waybill 변환 도구 (GitHub Pages)</h1>
+    <h1>엑셀 → waybill 변환 도구</h1>
   </header>
 
   <main>
-    <!-- 1. 파일 업로드 -->
+    <!-- 1. 업체명 선택 -->
     <div class="card">
-      <h2>1. 엑셀 업로드</h2>
-      <p>
-        어떤 형식의 엑셀이라도 업로드할 수 있습니다. <br />
-        업로드 후, 아래에서 <strong>각 열을 waybill 양식의 어떤 항목에 쓸지</strong> 선택하면,
-        동일한 waybill 형식으로 엑셀 파일을 만들어 줍니다.
-      </p>
+      <h2>1. 업체명 선택</h2>
+      <p>먼저 어떤 업체의 규칙을 사용할지 선택해 주세요. (현재는 알파 전용 규칙이 적용됩니다.)</p>
 
-      <div class="file-input">
-        <input type="file" id="file-input" accept=".xlsx,.xls" />
-      </div>
-
-      <div class="status" id="status"></div>
-    </div>
-
-    <!-- 2. 업체명 + 열 매핑 설정 -->
-    <div class="card">
-      <h2>2. 업체명 & 열 매핑 설정</h2>
-      <p>
-        먼저 업체명을 선택하고, 업로드한 엑셀의 컬럼(열)을 waybill 항목에 연결해 주세요.
-      </p>
-
-      <!-- 업체명 선택 -->
-      <div class="mapping">
-        <h3 class="section-title">업체명 선택</h3>
-
-        <div class="mapping-item" style="max-width: 240px;">
-          <label for="vendor-select">업체명</label>
-          <select id="vendor-select">
-            <option value="">선택하세요</option>
-            <option value="알파">알파</option>
-          </select>
-          <div class="mapping-hint">
-            * "알파"를 선택하면 알파 전용 변환 규칙과 상품 정보(품목명 자동 생성)를 사용합니다.
-          </div>
+      <div class="mapping-item" style="max-width: 260px;">
+        <label for="vendor-select">업체명</label>
+        <select id="vendor-select">
+          <option value="">선택하세요</option>
+          <option value="알파">알파</option>
+        </select>
+        <div class="mapping-hint">
+          * "알파" 선택 시 알파 전용 변환 규칙이 적용됩니다.
         </div>
-
-        <hr style="margin: 20px 0; border-color: rgba(148,163,184,0.3);" />
       </div>
+      <div class="status" id="status-vendor"></div>
+    </div>
 
-      <!-- 열 매핑 UI -->
-      <div id="mapping" class="mapping">
-        아직 파일이 업로드되지 않았습니다.
+    <!-- 2. 파일 업로드 (품목 파일 + 주문 파일) -->
+    <div class="card">
+      <h2>2. 품목 파일 & 주문 파일 업로드</h2>
+      <p>
+        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1 등의 상품 정보가 들어 있고,<br />
+        <strong>주문 파일</strong>에는 실제 출고할 주문 내역이 들어 있습니다.
+      </p>
+
+      <h3 class="section-title">2-1. 품목 파일 업로드 (알파 상품 마스터)</h3>
+      <div class="file-input">
+        <input type="file" id="file-input-items" accept=".xlsx,.xls" />
+      </div>
+      <div class="sub-status" id="status-items">품목 파일을 업로드해 주세요.</div>
+
+      <h3 class="section-title" style="margin-top:20px;">2-2. 주문 파일 업로드</h3>
+      <div class="file-input">
+        <input type="file" id="file-input-orders" accept=".xlsx,.xls" />
+      </div>
+      <div class="sub-status" id="status-orders">주문 파일을 업로드해 주세요.</div>
+
+      <div class="mapping" id="mapping">
+        주문 파일을 업로드하면 열 매핑 옵션이 여기에 표시됩니다.
       </div>
     </div>
 
-    <!-- 3. 미리보기 & 변환 -->
+    <!-- 3. 미리보기 & 변환 실행 -->
     <div class="card">
       <h2>3. 미리보기 & 변환 실행</h2>
       <p>
-        아래에 원본 데이터의 일부를 미리 보여줍니다. <br />
-        업체명과 열 매핑을 확인한 후 <strong>엑셀 변환하기</strong> 버튼을 누르면, waybill 형식의 엑셀이 다운로드됩니다.
+        주문 파일의 상위 몇 행을 미리 보여줍니다. 업체명/파일 업로드/매핑을 확인한 뒤,<br />
+        <strong>엑셀 변환하기</strong>를 누르면 waybill 형식으로 변환된 엑셀이 다운로드됩니다.
       </p>
 
       <button id="convert-btn" disabled>엑셀 변환하기 (waybill.xlsx)</button>
@@ -234,74 +237,126 @@
 
   <!-- 🔻 스크립트는 body 맨 끝에 둔다 🔻 -->
   <script>
-    const fileInput = document.getElementById("file-input");
-    const convertBtn = document.getElementById("convert-btn");
-    const statusEl = document.getElementById("status");
-    const statusConvertEl = document.getElementById("status-convert");
-    const previewEl = document.getElementById("preview");
-    const mappingEl = document.getElementById("mapping");
-    const vendorSelect = document.getElementById("vendor-select");
+    const vendorSelect      = document.getElementById("vendor-select");
+    const statusVendorEl    = document.getElementById("status-vendor");
 
-    let originalRows = [];
-    let headers = [];
+    const fileInputItems    = document.getElementById("file-input-items");
+    const fileInputOrders   = document.getElementById("file-input-orders");
+    const statusItemsEl     = document.getElementById("status-items");
+    const statusOrdersEl    = document.getElementById("status-orders");
+
+    const convertBtn        = document.getElementById("convert-btn");
+    const statusConvertEl   = document.getElementById("status-convert");
+    const previewEl         = document.getElementById("preview");
+    const mappingEl         = document.getElementById("mapping");
+
     let selectedVendor = "";
+    let itemRows  = [];   // 품목 파일
+    let orderRows = [];   // 주문 파일
+    let orderHeaders = [];
 
     // waybill 양식 고정 컬럼 정의
     const WAYBILL_FIELDS = [
-      { key: "받는분성명", label: "받는분 성명" },
-      { key: "받는분주소(전체, 분할)", label: "받는분 주소(전체, 분할)" },
-      { key: "받는분전화번호", label: "받는분 전화번호" },
-      { key: "받는분기타연락처", label: "받는분 기타 연락처" },
-      { key: "품목명", label: "품목명" },
-      { key: "박스수량", label: "박스 수량" },
-      { key: "기본운임", label: "기본 운임" },
-      { key: "운임구분", label: "운임 구분" },
-      { key: "보내는분성명", label: "보내는분 성명" },
-      { key: "보내는분주소(전체, 분할)", label: "보내는분 주소(전체, 분할)" },
-      { key: "보내는분전화번호", label: "보내는분 전화번호" },
-      { key: "배송메세지1", label: "배송 메세지 1" },
-      { key: "기타1", label: "기타1" }
+      { key: "받는분성명",             label: "받는분 성명" },
+      { key: "받는분주소(전체, 분할)",  label: "받는분 주소(전체, 분할)" },
+      { key: "받는분전화번호",         label: "받는분 전화번호" },
+      { key: "받는분기타연락처",       label: "받는분 기타 연락처" },
+      { key: "품목명",                label: "품목명" },
+      { key: "박스수량",              label: "박스 수량" },
+      { key: "기본운임",              label: "기본 운임" },
+      { key: "운임구분",              label: "운임 구분" },
+      { key: "보내는분성명",          label: "보내는분 성명" },
+      { key: "보내는분주소(전체, 분할)",label: "보내는분 주소(전체, 분할)" },
+      { key: "보내는분전화번호",      label: "보내는분 전화번호" },
+      { key: "배송메세지1",           label: "배송 메세지 1" },
+      { key: "기타1",                 label: "기타1" }
     ];
 
-    // 알파 상품 마스터 (상품코드 → { 품목명, 상품명, 규격, 상품분류1 ... })
+    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1 ... })
     const alphaGoodsByCode = new Map();
-    let alphaGoodsLoaded = false;
-    let alphaGoodsLoadingError = null;
+    let alphaGoodsLoaded   = false;
 
-    // 업체명 선택 이벤트
-    vendorSelect.addEventListener("change", async (e) => {
+    // 업체명 선택
+    vendorSelect.addEventListener("change", (e) => {
       selectedVendor = e.target.value;
-
-      if (selectedVendor === "알파" && !alphaGoodsLoaded && !alphaGoodsLoadingError) {
-        try {
-          statusConvertEl.textContent = "알파 상품 정보 로딩 중...";
-          await loadAlphaGoods();
-          if (alphaGoodsLoaded) {
-            statusConvertEl.textContent = "알파 상품 정보 로딩 완료.";
-          } else {
-            statusConvertEl.textContent = "알파 상품 정보를 불러오지 못했습니다.";
-          }
-        } catch (err) {
-          console.error(err);
-          statusConvertEl.textContent = "알파 상품 정보 로딩 중 오류가 발생했습니다.";
-        }
+      if (!selectedVendor) {
+        statusVendorEl.textContent = "업체명을 선택해 주세요.";
+      } else {
+        statusVendorEl.textContent = `선택된 업체: ${selectedVendor}`;
       }
+      updateConvertButtonState();
     });
 
-    // 파일 업로드 이벤트
-    fileInput.addEventListener("change", async (e) => {
+    // 품목 파일 업로드
+    fileInputItems.addEventListener("change", async (e) => {
       const file = e.target.files[0];
-      statusConvertEl.textContent = "";
+      alphaGoodsByCode.clear();
+      alphaGoodsLoaded = false;
+
       if (!file) {
-        convertBtn.disabled = true;
-        statusEl.textContent = "파일을 선택해 주세요.";
-        mappingEl.textContent = "아직 파일이 업로드되지 않았습니다.";
-        previewEl.innerHTML = "";
+        statusItemsEl.textContent = "품목 파일을 다시 선택해 주세요.";
+        updateConvertButtonState();
         return;
       }
 
       try {
-        statusEl.textContent = "엑셀 읽는 중...";
+        statusItemsEl.textContent = "품목 파일 읽는 중...";
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        itemRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        if (!itemRows || itemRows.length === 0) {
+          statusItemsEl.textContent = `품목 시트("${firstSheetName}")에 데이터가 없습니다.`;
+          updateConvertButtonState();
+          return;
+        }
+
+        // 상품 마스터 맵 생성
+        for (const row of itemRows) {
+          const code      = (row["상품코드"]   ?? "").toString().trim();
+          const itemName  = (row["품목명"]     ?? "").toString().trim();
+          const units     = row["입수"];
+          const cat1      = (row["상품분류1"]  ?? "").toString().trim();
+          if (!code) continue;
+
+          alphaGoodsByCode.set(code, {
+            상품코드:   code,
+            품목명:     itemName,
+            입수:       units,
+            상품분류1:  cat1
+          });
+        }
+
+        alphaGoodsLoaded = alphaGoodsByCode.size > 0;
+        statusItemsEl.textContent =
+          `품목 파일(${firstSheetName})에서 ${itemRows.length}행, 상품코드 ${alphaGoodsByCode.size}개를 읽었습니다.`;
+      } catch (err) {
+        console.error(err);
+        statusItemsEl.textContent = "품목 파일을 읽는 중 오류가 발생했습니다.";
+      }
+
+      updateConvertButtonState();
+    });
+
+    // 주문 파일 업로드
+    fileInputOrders.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+
+      if (!file) {
+        statusOrdersEl.textContent = "주문 파일을 다시 선택해 주세요.";
+        orderRows = [];
+        orderHeaders = [];
+        mappingEl.textContent = "주문 파일을 업로드하면 열 매핑 옵션이 여기에 표시됩니다.";
+        previewEl.innerHTML = "";
+        updateConvertButtonState();
+        return;
+      }
+
+      try {
+        statusOrdersEl.textContent = "주문 파일 읽는 중...";
         previewEl.innerHTML = "";
         mappingEl.textContent = "(열 정보를 분석하는 중입니다...)";
 
@@ -310,29 +365,29 @@
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        originalRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        orderRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-        if (!originalRows || originalRows.length === 0) {
-          statusEl.textContent = `첫 번째 시트("${firstSheetName}")에 데이터가 없습니다.`;
-          convertBtn.disabled = true;
-          mappingEl.textContent = "매핑을 할 데이터가 없습니다.";
+        if (!orderRows || orderRows.length === 0) {
+          statusOrdersEl.textContent = `주문 시트("${firstSheetName}")에 데이터가 없습니다.`;
+          mappingEl.textContent = "매핑을 할 주문 데이터가 없습니다.";
+          orderHeaders = [];
+          updateConvertButtonState();
           return;
         }
 
-        headers = Object.keys(originalRows[0]);
-        statusEl.textContent = `첫 번째 시트("${firstSheetName}")에서 ${originalRows.length}개의 행을 읽었습니다.`;
+        orderHeaders = Object.keys(orderRows[0]);
+        statusOrdersEl.textContent =
+          `주문 시트("${firstSheetName}")에서 ${orderRows.length}개의 행을 읽었습니다.`;
 
-        convertBtn.disabled = false;
-
-        showPreviewTable(originalRows);
-        buildMappingUI(headers);
-
+        showPreviewTable(orderRows);
+        buildMappingUI(orderHeaders);
       } catch (err) {
         console.error(err);
-        statusEl.textContent = "엑셀 파일을 읽는 중 오류가 발생했습니다.";
-        convertBtn.disabled = true;
+        statusOrdersEl.textContent = "주문 파일을 읽는 중 오류가 발생했습니다.";
         mappingEl.textContent = "매핑을 생성할 수 없습니다.";
       }
+
+      updateConvertButtonState();
     });
 
     // 변환 버튼 클릭
@@ -344,8 +399,13 @@
         return;
       }
 
-      if (!originalRows || originalRows.length === 0) {
-        statusConvertEl.textContent = "먼저 엑셀 파일을 업로드해 주세요.";
+      if (!orderRows || orderRows.length === 0) {
+        statusConvertEl.textContent = "먼저 주문 파일을 업로드해 주세요.";
+        return;
+      }
+
+      if (selectedVendor === "알파" && !alphaGoodsLoaded) {
+        statusConvertEl.textContent = "알파 품목 파일(상품 마스터)을 먼저 업로드해 주세요.";
         return;
       }
 
@@ -358,21 +418,21 @@
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-      const transformedRows = applyRules(originalRows, mapping);
+        let transformedRows = applyRules(orderRows, mapping);
 
-      // 🔥 정렬: 받는분성명 기준 오름차순
-      transformedRows.sort((a, b) => {
-        const nameA = (a["받는분성명"] ?? "").toString().trim();
-        const nameB = (b["받는분성명"] ?? "").toString().trim();
-        return nameA.localeCompare(nameB, "ko"); // 한국어 오름차순
-      });
+        // 받는분성명 기준 오름차순 정렬
+        transformedRows.sort((a, b) => {
+          const nameA = (a["받는분성명"] ?? "").toString().trim();
+          const nameB = (b["받는분성명"] ?? "").toString().trim();
+          return nameA.localeCompare(nameB, "ko");
+        });
 
-      // 🔥 내부 임시 필드 제거
-      const cleanedRows = transformedRows.map(row => {
-        const copy = { ...row };
-        delete copy["_internal_qty"];
-        return copy;
-      });
+        // 내부 임시 필드(_internal_qty)는 최종 결과에서 제거
+        const cleanedRows = transformedRows.map(row => {
+          const copy = { ...row };
+          delete copy["_internal_qty"];
+          return copy;
+        });
 
         const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
         const newWorkbook = XLSX.utils.book_new();
@@ -382,73 +442,30 @@
 
         statusConvertEl.textContent =
           `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
-
       } catch (err) {
         console.error(err);
         statusConvertEl.textContent = "변환 중 오류가 발생했습니다.";
       }
     });
 
-    // 🔹 알파 상품 마스터 로딩 (업체명 = 알파일 때만 호출)
-    async function loadAlphaGoods() {
-      try {
-        const res = await fetch("https://commerce-la.github.io/Delivery/alpha_delivery.html");
-        const text = await res.text();
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, "text/html");
-
-        const table = doc.querySelector("table.data-table");
-        if (!table) {
-          throw new Error("alpha_delivery.html에서 data-table을 찾지 못했습니다.");
-        }
-
-        const rows = Array.from(table.querySelectorAll("tbody tr"));
-        rows.forEach(tr => {
-          const tds = tr.querySelectorAll("td");
-          if (tds.length === 0) return;
-
-          // alpha_delivery.html 컬럼 순서 가정:
-          // 0: 상품코드, 1: 품목명, 2: 바코드, 3: 상품명, 4: 규격,
-          // 5: 단위, 6: 입수, 7: 납품단가, 8: 상품분류1, ...
-          const code       = tds[0]?.textContent.trim() ?? "";
-          const itemName   = tds[1]?.textContent.trim() ?? "";
-          const barcode    = tds[2]?.textContent.trim() ?? "";
-          const productName= tds[3]?.textContent.trim() ?? "";
-          const spec       = tds[4]?.textContent.trim() ?? "";
-          const category1  = tds[8]?.textContent.trim() ?? "";
-
-          if (!code) return;
-
-          alphaGoodsByCode.set(code, {
-            상품코드: code,
-            품목명: itemName,
-            바코드: barcode,
-            상품명: productName,
-            규격: spec,
-            상품분류1: category1
-          });
-        });
-
-        alphaGoodsLoaded = true;
-        alphaGoodsLoadingError = null;
-        console.log("알파 상품 마스터 로딩 완료. 건수:", alphaGoodsByCode.size);
-      } catch (err) {
-        console.error("알파 상품 마스터 로딩 실패:", err);
-        alphaGoodsLoadingError = err;
+    function updateConvertButtonState() {
+      let enable = !!selectedVendor && orderRows.length > 0;
+      if (selectedVendor === "알파") {
+        enable = enable && alphaGoodsLoaded;
       }
+      convertBtn.disabled = !enable;
     }
 
-    // 매핑 UI 만들기
+    // 매핑 UI 만들기 (주문 파일 기준)
     function buildMappingUI(headers) {
       if (!headers || headers.length === 0) {
-        mappingEl.textContent = "입력 엑셀의 컬럼을 찾을 수 없습니다.";
+        mappingEl.textContent = "주문 파일의 컬럼을 찾을 수 없습니다.";
         return;
       }
 
       let html = "";
       html += `<div class="mapping-hint">`;
-      html += `각 waybill 항목에 대해, 어떤 입력 엑셀 열을 사용할지 선택하세요. `;
+      html += `각 waybill 항목에 대해, 어떤 <strong>주문 파일의 열</strong>을 사용할지 선택하세요. `;
       html += `선택하지 않은 항목은 빈 값으로 들어갑니다.`;
       html += `</div>`;
 
@@ -491,7 +508,7 @@
       return Number.isFinite(num) ? num : 0;
     }
 
-    // 🔹 핵심 변환 로직 (알파 전용 규칙 + 공통 규칙)
+    // 핵심 변환 로직 (알파 전용 규칙 + 공통 규칙)
     function applyRules(rows, mapping) {
       let workingRows = [...rows];
 
@@ -522,20 +539,21 @@
       const result = workingRows.map((row) => {
         const out = {};
 
-        // 🔹 내부 임시 수량값 (_internal_qty) 계산 (항상 생성)
+        // 내부 임시 수량값 (_internal_qty) 계산 (항상 생성)
         let internalQty = 0;
 
         if (selectedVendor === "알파") {
           // 기본: 입수 * 주문량
           // 단, 상품분류1 = "아트메이트" 면 주문량만 사용
-          const orderQty    = toNumberOrZero(row["주문량"]);
-          const unitsPerBox = toNumberOrZero(row["입수"]);
-          let isArtMate = false;
+          const orderQty = toNumberOrZero(row["주문량"]);
+          let unitsPerBox = 0;
+          let isArtMate   = false;
 
           const code = (row["상품코드"] ?? "").toString().trim();
-          if (alphaGoodsLoaded && code) {
+          if (code && alphaGoodsByCode.has(code)) {
             const goods = alphaGoodsByCode.get(code);
-            if (goods && goods.상품분류1 === "아트메이트") {
+            unitsPerBox = toNumberOrZero(goods.입수);
+            if (goods.상품분류1 === "아트메이트") {
               isArtMate = true;
             }
           }
@@ -602,15 +620,14 @@
 
             const code = (row["상품코드"] ?? "").toString().trim();
 
-            // alpha_delivery 마스터에서 품목명 찾기
-            if (alphaGoodsLoaded && code) {
+            if (code && alphaGoodsByCode.has(code)) {
               const goods = alphaGoodsByCode.get(code);
               if (goods && goods.품목명) {
                 baseName = goods.품목명;
               }
             }
 
-            // 못 찾으면 매핑된 컬럼 사용
+            // 품목 파일에서 못 찾으면 주문 파일 매핑된 컬럼 사용
             if (!baseName) {
               const mappedHeaderForItem = mapping[key];
               if (mappedHeaderForItem) {
@@ -623,7 +640,7 @@
             continue;
           }
 
-          // (5) 나머지 항목: 매핑 UI 설정대로 처리
+          // (5) 나머지 항목: 매핑 UI 설정대로 처리 (주문 파일 기준)
           const mappedHeader = mapping[key];
 
           if (!mappedHeader) {
@@ -645,7 +662,7 @@
           }
         }
 
-        // 🔹 내부 임시 필드 추가 (엑셀에는 나가지 않고, 나중에 삭제됨)
+        // 내부 임시 필드 추가 (엑셀에는 나가지 않고, 나중에 삭제됨)
         out["_internal_qty"] = internalQty;
 
         return out;
@@ -654,7 +671,7 @@
       return result;
     }
 
-    // 원본 미리보기
+    // 주문 파일 미리보기
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
         previewEl.innerHTML = "<em>미리보기할 데이터가 없습니다.</em>";
@@ -665,7 +682,7 @@
       const previewRows = rows.slice(0, maxRows);
       const keys = Object.keys(previewRows[0]);
 
-      let html = "<div>원본 데이터 미리보기 (상위 " + previewRows.length + "행)</div>";
+      let html = "<div>주문 데이터 미리보기 (상위 " + previewRows.length + "행)</div>";
       html += "<table><thead><tr>";
       for (const key of keys) {
         html += "<th>" + escapeHtml(key) + "</th>";
