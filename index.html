@@ -1,81 +1,165 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>라미에이스 - 파트너 로그인</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f4f6f8;
-            font-family: 'Noto Sans KR', sans-serif;
-        }
-        .login-container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            width: 300px;
-            text-align: center;
-        }
-        h2 { margin-bottom: 20px; color: #333; }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #0056b3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-        button:hover { background-color: #004494; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>라미에이스 업무 포털 - 로그인</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      line-height: 1.5;
+    }
+
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+      background: rgba(15, 23, 42, 0.95);
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    main {
+      max-width: 480px;
+      margin: 40px auto 0;
+      padding: 0 16px 48px;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      margin-top: 0;
+      margin-bottom: 16px;
+      color: #cbd5f5;
+      font-size: 14px;
+    }
+
+    .login-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .login-form-group label {
+      font-size: 13px;
+    }
+
+    .login-form-group input {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.9);
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 16px;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #f9fafb;
+    }
+
+    #login-status {
+      margin-top: 8px;
+      font-size: 13px;
+      min-height: 18px;
+      color: #fca5a5;
+    }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+  </style>
 </head>
 <body>
+  <header>
+    <h1>라미에이스 업무 포털</h1>
+  </header>
 
-<div class="login-container">
-    <h2>LamiAce Login</h2>
-    <input type="text" id="bizNumber" placeholder="사업자 등록번호 (- 제외)">
-    <input type="text" id="corpName" placeholder="법인명">
-    <button onclick="login()">로그인</button>
-</div>
+  <main>
+    <div class="card" id="login-view">
+      <h2>로그인</h2>
+      <p>사업자등록번호와 법인명을 입력해 주세요.</p>
 
-<script>
-    function login() {
-        const bizNumber = document.getElementById('bizNumber').value.trim();
-        const corpName = document.getElementById('corpName').value.trim();
+      <div class="login-form-group">
+        <label for="bizno-input">사업자등록번호</label>
+        <input type="text" id="bizno-input" placeholder="예: 1098154200" />
+      </div>
 
-        // 요청하신 인증 정보 확인
-        if (bizNumber === '1098154200' && corpName === '라미에이스') {
-            alert('로그인 성공! 메인 화면으로 이동합니다.');
-            // GitHub Pages 경로에 맞춰 이동 (같은 폴더 내 main.html)
-            window.location.href = './main.html'; 
-        } else {
-            alert('사업자 번호 또는 법인명이 일치하지 않습니다.');
-        }
+      <div class="login-form-group">
+        <label for="corpname-input">법인명</label>
+        <input type="text" id="corpname-input" placeholder="예: 라미에이스" />
+      </div>
+
+      <button id="login-btn">로그인</button>
+      <div id="login-status"></div>
+
+      <div class="hint">
+        * 현재 허용된 계정<br />
+        사업자등록번호: <strong>1098154200</strong><br />
+        법인명: <strong>라미에이스</strong>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const biznoInput   = document.getElementById("bizno-input");
+    const corpInput    = document.getElementById("corpname-input");
+    const loginBtn     = document.getElementById("login-btn");
+    const loginStatus  = document.getElementById("login-status");
+
+    function doLogin() {
+      const biz  = biznoInput.value.trim();
+      const corp = corpInput.value.trim();
+
+      if (biz === "1098154200" && corp === "라미에이스") {
+        // 로그인 성공: 세션 플래그 남기기
+        sessionStorage.setItem("loggedIn", "true");
+        // 메인 업무 화면으로 이동
+        window.location.href = "main.html";
+      } else {
+        loginStatus.textContent = "사업자등록번호 또는 법인명이 올바르지 않습니다.";
+      }
     }
-    
-    // 엔터키 입력 시 로그인 실행
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
-            login();
-        }
-    });
-</script>
 
+    loginBtn.addEventListener("click", doLogin);
+
+    [biznoInput, corpInput].forEach((input) => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          doLogin();
+        }
+      });
+    });
+  </script>
 </body>
 </html>
