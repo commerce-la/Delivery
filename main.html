@@ -36,6 +36,7 @@
     }
     .content-frame {
       flex: 1;
+      background: #0f172a; /* 오른쪽 빈 화면도 배경 통일 */
     }
     iframe {
       border: none;
@@ -46,7 +47,7 @@
 </head>
 <body>
   <header>
-    <h1>업무 포털</h1>
+    <h1>라미에이스 업무 포털</h1>
   </header>
 
   <div class="layout">
@@ -55,14 +56,14 @@
       <iframe src="menu.html"></iframe>
     </div>
 
-    <!-- 오른쪽 업무 화면 (운송장 변환 등) -->
+    <!-- 오른쪽 업무 화면 (처음에는 빈 화면) -->
     <div class="content-frame">
-      <iframe src="waybill.html" name="workFrame"></iframe>
+      <iframe src="" name="workFrame"></iframe>
     </div>
   </div>
 
   <script>
-    // 로그인 체크: index.html에서 sessionStorage.setItem("loggedIn","true")를 썼다고 가정
+    // 로그인 체크
     if (sessionStorage.getItem("loggedIn") !== "true") {
       window.location.href = "index.html";
     }
