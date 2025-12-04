@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>메뉴</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .sidebar {
+      padding: 16px 12px;
+      min-height: 100vh;
+      box-sizing: border-box;
+      background: #020617;
+    }
+    .sidebar-title {
+      font-size: 14px;
+      margin-bottom: 10px;
+      color: #cbd5f5;
+    }
+    .menu-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .menu-list li {
+      margin-bottom: 6px;
+    }
+    .menu-link {
+      display: block;
+      width: 100%;
+      text-decoration: none;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #e5e7eb;
+      background: transparent;
+    }
+    .menu-link:hover {
+      background: rgba(51, 65, 85, 0.8);
+    }
+    .menu-link.active {
+      background: #2563eb;
+      color: #f9fafb;
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-title">업무 메뉴</div>
+    <ul class="menu-list">
+      <li>
+        <!-- 기본 선택: 운송장 변환 -->
+        <a href="waybill.html" target="workFrame" class="menu-link active">
+          1. 운송장 변환
+        </a>
+      </li>
+      <li>
+        <a href="about:blank" target="workFrame" class="menu-link">
+          2. 재고 관리 (준비중)
+        </a>
+      </li>
+      <li>
+        <a href="about:blank" target="workFrame" class="menu-link">
+          3. 주문 현황 (준비중)
+        </a>
+      </li>
+      <li>
+        <a href="about:blank" target="workFrame" class="menu-link">
+          4. 정산 관리 (준비중)
+        </a>
+      </li>
+      <li>
+        <a href="about:blank" target="workFrame" class="menu-link">
+          5. 설정 (준비중)
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <script>
+    // 클릭 시 active 스타일 변경
+    const links = document.querySelectorAll(".menu-link");
+    links.forEach((link) => {
+      link.addEventListener("click", () => {
+        links.forEach(l => l.classList.remove("active"));
+        link.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>
