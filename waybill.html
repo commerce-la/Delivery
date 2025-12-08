@@ -429,118 +429,123 @@
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-        let transformedRows = applyRules(orderRows, mapping);
+let transformedRows = applyRules(orderRows, mapping);
 
-        // 1) 받는분성명 기준 오름차순 정렬
-        transformedRows.sort((a, b) => {
-          const nameA = (a["받는분성명"] ?? "").toString().trim();
-          const nameB = (b["받는분성명"] ?? "").toString().trim();
-          return nameA.localeCompare(nameB, "ko");
-        });
+// 1) 받는분 정보로 그룹 만들기
+const groupMap = {};          // key: name+addr+phone, value: 인덱스 배열
+transformedRows.forEach((row, idx) => {
+  const name  = (row["받는분성명"] ?? "").toString().trim();
+  const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
+  const phone = (row["받는분전화번호"] ?? "").toString().trim();
 
-        // 2) 노랑색 하이라이트 대상 찾기
-        //    - 받는분성명 + 주소 + 전화번호 조합이 2개 이상
-        //    - 해당 행의 수량(_adjusted_qty) < 카톤(_carton)
-        const yellowRowIndices = new Set();
-        const groupMap = {};
+  // 세 값이 다 있어야만 그룹 대상으로 인정
+  if (!name || !addr || !phone) return;
 
-        transformedRows.forEach((row, idx) => {
-          const name  = (row["받는분성명"] ?? "").toString().trim();
-          const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
-          const phone = (row["받는분전화번호"] ?? "").toString().trim();
-          if (!name || !addr || !phone) return;
-          const key = `${name}||${addr}||${phone}`;
-          if (!groupMap[key]) groupMap[key] = [];
-          groupMap[key].push(idx);
-        });
+  const key = `${name}||${addr}||${phone}`;
+  if (!groupMap[key]) groupMap[key] = [];
+  groupMap[key].push(idx);
+});
 
-        for (const key in groupMap) {
-          const indices = groupMap[key];
-          if (indices.length < 2) continue; // 2개 이상인 그룹만
-          indices.forEach((i) => {
-            const row    = transformedRows[i];
-            const qty    = Number(row["_adjusted_qty"] ?? 0);
-            const carton = Number(row["_carton"] ?? 0);
-            if (carton > 0 && qty < carton) {
-              yellowRowIndices.add(i);
-            }
-          });
-        }
+// 2) 조건을 만족하는 행 인덱스 찾기
+const highlightIndexSet = new Set();
 
-        // 3) 빨간색 하이라이트 대상 찾기
-        //    - 기본운임이 "X" 인 행
-        const redRowIndices = new Set();
-        transformedRows.forEach((row, idx) => {
-          const fare = (row["기본운임"] ?? "").toString().trim();
-          if (fare === "X") {
-            redRowIndices.add(idx);
-          }
-        });
+for (const key in groupMap) {
+  const indices = groupMap[key];
+  if (indices.length < 2) continue;  // 🔹 2개 이상인 그룹만
 
-        // 🔹 3.5) 표시색상 컬럼 채우기 (새로 추가)
-        transformedRows.forEach((row, idx) => {
-        let flag = "";
-          if (redRowIndices.has(idx)) {
-          flag = "RED";      // 기본운임 X → 빨강 우선
-          } else if (yellowRowIndices.has(idx)) {
-          flag = "YELLOW";   // 그 외 노랑 대상
-          }
-          row["표시색상"] = flag;
-        });
-        
-        // 4) 엑셀로 내보내기 전에 내부 필드 제거
-        const cleanedRows = transformedRows.map(row => {
-          const copy = { ...row };
-          delete copy["_internal_qty"];
-          delete copy["_adjusted_qty"];
-          delete copy["_carton"];
-          return copy;
-        });
+  indices.forEach((i) => {
+    const row = transformedRows[i];
+    const qty    = Number(row["_adjusted_qty"] ?? 0);  // 수량
+    const carton = Number(row["_carton"] ?? 0);        // 카톤
 
-        // 5) 시트 생성
-        const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
-        const newWorkbook = XLSX.utils.book_new();
+    // 카톤이 있고, 수량이 카톤보다 작은 경우만 표시
+    if (carton > 0 && qty < carton) {
+      highlightIndexSet.add(i);
+    }
+  });
+}
 
-        // 6) 노랑색/빨간색 하이라이트 적용 (A~E 열)
-        const ws = newWorksheet;
-        const utils = XLSX.utils;
+// 3) 받는분성명 기준 오름차순 정렬
+transformedRows.sort((a, b) => {
+  const nameA = (a["받는분성명"] ?? "").toString().trim();
+  const nameB = (b["받는분성명"] ?? "").toString().trim();
+  return nameA.localeCompare(nameB, "ko");
+});
 
-        // 노랑색 먼저
-        yellowRowIndices.forEach((dataIdx) => {
-          const r = dataIdx + 1;  // 0은 헤더, 데이터는 1부터
-          for (let c = 0; c < 5; c++) { // A(0)~E(4)
-            const ref = utils.encode_cell({ c, r });
-            const cell = ws[ref];
-            if (!cell) continue;
-            if (!cell.s) cell.s = {};
-            cell.s.fill = {
-              patternType: "solid",
-              fgColor: { rgb: "FFFF00" }
-            };
-          }
-        });
+// 4) 엑셀로 내보내기 전에 내부 필드 제거
+const cleanedRows = transformedRows.map(row => {
+  const copy = { ...row };
+  delete copy["_internal_qty"];
+  delete copy["_adjusted_qty"];
+  delete copy["_carton"];
+  return copy;
+});
 
-        // 빨간색은 노랑색보다 우선 (덮어쓰기)
-        redRowIndices.forEach((dataIdx) => {
-          const r = dataIdx + 1;
-          for (let c = 0; c < 5; c++) {
-            const ref = utils.encode_cell({ c, r });
-            const cell = ws[ref];
-            if (!cell) continue;
-            if (!cell.s) cell.s = {};
-            cell.s.fill = {
-              patternType: "solid",
-              fgColor: { rgb: "FF0000" }
-            };
-          }
-        });
+// 5) 시트 생성
+const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
+const newWorkbook = XLSX.utils.book_new();
 
-        // 7) 워크북에 시트 추가 후 저장
-        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
-        XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
+// 6) A~E열 노랑색 채우기 (조건 만족하는 행들)
+const XLSX_utils = XLSX.utils;
 
-        statusConvertEl.textContent =
-          `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
+// highlightIndexSet은 정렬 전 인덱스를 기준으로 만들어졌지만,
+// 위에서 sort를 했기 때문에, 좀 더 정확하게 하려면
+// 정렬 후 다시 그룹을 만들거나, 정렬 전에 정렬 기준/인덱스를 같이 관리해야 해.
+// 여기서는 정렬 전에 만든 인덱스를 그대로 쓰면 안 맞을 수 있어
+// → 간단하게 "정렬 이후 기준"으로 다시 계산하는 버전으로 작성하자.
+
+const recipientToIndicesAfterSort = {};
+transformedRows.forEach((row, idx) => {
+  const name  = (row["받는분성명"] ?? "").toString().trim();
+  const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
+  const phone = (row["받는분전화번호"] ?? "").toString().trim();
+  if (!name || !addr || !phone) return;
+  const key = `${name}||${addr}||${phone}`;
+  if (!recipientToIndicesAfterSort[key]) recipientToIndicesAfterSort[key] = [];
+  recipientToIndicesAfterSort[key].push(idx);
+});
+
+// 이제 정렬 후 기준으로 다시 조건 체크 → rowIndexToHighlight 세트 만들기
+const rowIndexToHighlight = new Set();
+
+for (const key in recipientToIndicesAfterSort) {
+  const indices = recipientToIndicesAfterSort[key];
+  if (indices.length < 2) continue;
+  indices.forEach((i) => {
+    const row = transformedRows[i];
+    const qty    = Number(row["_adjusted_qty"] ?? 0);
+    const carton = Number(row["_carton"] ?? 0);
+    if (carton > 0 && qty < carton) {
+      rowIndexToHighlight.add(i);
+    }
+  });
+}
+
+// json_to_sheet로 만든 시트에서
+// header가 엑셀 1행(r=0), 데이터가 2행부터(r=1)니까,
+// r = (데이터 인덱스) + 1
+rowIndexToHighlight.forEach((dataIndex) => {
+  const excelRow = dataIndex + 1; // 0:header, 1:첫 데이터행
+
+  for (let c = 0; c < 5; c++) {  // A(0)~E(4)
+    const cellRef = XLSX_utils.encode_cell({ c, r: excelRow });
+    const cell = newWorksheet[cellRef];
+    if (!cell) continue; // 값이 없으면 패스
+
+    if (!cell.s) cell.s = {};
+    cell.s.fill = {
+      patternType: "solid",
+      fgColor: { rgb: "FFFF00" }   // 노랑색
+    };
+  }
+});
+
+// 7) 워크북에 시트 추가 후 저장
+XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
+XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
+
+statusConvertEl.textContent =
+  `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
       } catch (err) {
         console.error(err);
         statusConvertEl.textContent = "변환 중 오류가 발생했습니다.";
