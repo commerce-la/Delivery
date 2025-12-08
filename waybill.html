@@ -168,7 +168,7 @@
   </style>
 </head>
 <body>
-  <main>
+  <ma*in>
     <h1 class="title">운송장 변환</h1>
     <p class="subtitle">알파 전용 규칙을 사용하여 주문 엑셀을 택배사 waybill 형식으로 변환합니다.</p>
 
@@ -758,6 +758,34 @@
 
       return rows;
     }
+    
+// (3-네이버) 네이버 전용: 수령자 정보 매핑
+// 주문시트 = 운송장양식
+// 수취인명        → 받는분성명
+// 통합배송지      → 받는분주소(전체, 분할)
+// 수취인연락처1   → 받는분전화번호
+// 수취인연락처2   → 받는분기타연락처
+if (selectedVendor === "네이버") {
+  if (key === "받는분성명") {
+    out[key] = row["수취인명"] ?? "";
+    continue;
+  }
+
+  if (key === "받는분주소(전체, 분할)") {
+    out[key] = row["통합배송지"] ?? "";
+    continue;
+  }
+
+  if (key === "받는분전화번호") {
+    out[key] = row["수취인연락처1"] ?? "";
+    continue;
+  }
+
+  if (key === "받는분기타연락처") {
+    out[key] = row["수취인연락처2"] ?? "";
+    continue;
+  }
+}
 
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
@@ -791,7 +819,7 @@
     function escapeHtml(value) {
       if (value === null || value === undefined) return "";
       return String(value)
-        .replace(/&/g, "&amp;")
+*        .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&quot;");
     }
