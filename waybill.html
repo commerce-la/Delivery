@@ -477,6 +477,17 @@
           }
         });
 
+        // 🔹 3.5) 표시색상 컬럼 채우기 (새로 추가)
+        transformedRows.forEach((row, idx) => {
+        let flag = "";
+          if (redRowIndices.has(idx)) {
+          flag = "RED";      // 기본운임 X → 빨강 우선
+          } else if (yellowRowIndices.has(idx)) {
+          flag = "YELLOW";   // 그 외 노랑 대상
+          }
+          row["표시색상"] = flag;
+        });
+        
         // 4) 엑셀로 내보내기 전에 내부 필드 제거
         const cleanedRows = transformedRows.map(row => {
           const copy = { ...row };
