@@ -232,12 +232,12 @@
   </main>
 
   <script>
-    // iframe을 직접 열었을 때 처리 (선택 사항)
+    // (선택) 단독 접근 시 메인/로그인으로 리다이렉트
     if (window.top === window.self) {
       if (sessionStorage.getItem("loggedIn") === "true") {
-        window.location.href = "main.html";
+        // window.location.href = "main.html"; // 필요시 주석 해제
       } else {
-        window.location.href = "index.html";
+        // window.location.href = "index.html";
       }
     }
 
@@ -259,7 +259,6 @@
     let orderRows = [];   // 주문 파일
     let orderHeaders = [];
 
-    // waybill 양식 고정 컬럼 정의
     const WAYBILL_FIELDS = [
       { key: "받는분성명",               label: "받는분 성명" },
       { key: "받는분주소(전체, 분할)",    label: "받는분 주소(전체, 분할)" },
@@ -276,11 +275,9 @@
       { key: "기타1",                   label: "기타1" }
     ];
 
-    // 알파 상품 마스터 (상품코드 → { 품목명, 입수, 상품분류1, 기본, 카톤, 운임 ... })
     const alphaGoodsByCode = new Map();
     let alphaGoodsLoaded   = false;
 
-    // 업체명 선택
     vendorSelect.addEventListener("change", (e) => {
       selectedVendor = e.target.value;
       if (!selectedVendor) {
@@ -291,7 +288,6 @@
       updateConvertButtonState();
     });
 
-    // 품목 파일 업로드
     fileInputItems.addEventListener("change", async (e) => {
       const file = e.target.files[0];
       alphaGoodsByCode.clear();
@@ -318,15 +314,14 @@
           return;
         }
 
-        // 상품 마스터 맵 생성
         for (const row of itemRows) {
           const code      = (row["상품코드"]   ?? "").toString().trim();
           const itemName  = (row["품목명"]     ?? "").toString().trim();
           const units     = row["입수"];
           const cat1      = (row["상품분류1"]  ?? "").toString().trim();
-          const basicFare = row["기본"];   // 기본 운임 값
-          const carton    = row["카톤"];   // 카톤 수량
-          const fareShip  = row["운임"];   // 운임 값
+          const basicFare = row["기본"];
+          const carton    = row["카톤"];
+          const fareShip  = row["운임"];
 
           if (!code) continue;
 
@@ -352,7 +347,6 @@
       updateConvertButtonState();
     });
 
-    // 주문 파일 업로드
     fileInputOrders.addEventListener("change", async (e) => {
       const file = e.target.files[0];
 
@@ -401,7 +395,6 @@
       updateConvertButtonState();
     });
 
-    // 변환 버튼 클릭
     convertBtn.addEventListener("click", () => {
       statusConvertEl.textContent = "";
 
@@ -429,123 +422,36 @@
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-let transformedRows = applyRules(orderRows, mapping);
+        // 1차 변환
+        let transformedRows = applyRules(orderRows, mapping);
 
-// 1) 받는분 정보로 그룹 만들기
-const groupMap = {};          // key: name+addr+phone, value: 인덱스 배열
-transformedRows.forEach((row, idx) => {
-  const name  = (row["받는분성명"] ?? "").toString().trim();
-  const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
-  const phone = (row["받는분전화번호"] ?? "").toString().trim();
+        // 🔹 새 규칙: 운임구분 후처리
+        transformedRows = applyPostFareRules(transformedRows);
 
-  // 세 값이 다 있어야만 그룹 대상으로 인정
-  if (!name || !addr || !phone) return;
+        // 받는분성명 기준 정렬
+        transformedRows.sort((a, b) => {
+          const nameA = (a["받는분성명"] ?? "").toString().trim();
+          const nameB = (b["받는분성명"] ?? "").toString().trim();
+          return nameA.localeCompare(nameB, "ko");
+        });
 
-  const key = `${name}||${addr}||${phone}`;
-  if (!groupMap[key]) groupMap[key] = [];
-  groupMap[key].push(idx);
-});
+        // 내부 필드 제거
+        const cleanedRows = transformedRows.map(row => {
+          const copy = { ...row };
+          delete copy["_internal_qty"];
+          delete copy["_adjusted_qty"];
+          delete copy["_carton"];
+          return copy;
+        });
 
-// 2) 조건을 만족하는 행 인덱스 찾기
-const highlightIndexSet = new Set();
+        const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
+        const newWorkbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
 
-for (const key in groupMap) {
-  const indices = groupMap[key];
-  if (indices.length < 2) continue;  // 🔹 2개 이상인 그룹만
+        XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
 
-  indices.forEach((i) => {
-    const row = transformedRows[i];
-    const qty    = Number(row["_adjusted_qty"] ?? 0);  // 수량
-    const carton = Number(row["_carton"] ?? 0);        // 카톤
-
-    // 카톤이 있고, 수량이 카톤보다 작은 경우만 표시
-    if (carton > 0 && qty < carton) {
-      highlightIndexSet.add(i);
-    }
-  });
-}
-
-// 3) 받는분성명 기준 오름차순 정렬
-transformedRows.sort((a, b) => {
-  const nameA = (a["받는분성명"] ?? "").toString().trim();
-  const nameB = (b["받는분성명"] ?? "").toString().trim();
-  return nameA.localeCompare(nameB, "ko");
-});
-
-// 4) 엑셀로 내보내기 전에 내부 필드 제거
-const cleanedRows = transformedRows.map(row => {
-  const copy = { ...row };
-  delete copy["_internal_qty"];
-  delete copy["_adjusted_qty"];
-  delete copy["_carton"];
-  return copy;
-});
-
-// 5) 시트 생성
-const newWorksheet = XLSX.utils.json_to_sheet(cleanedRows);
-const newWorkbook = XLSX.utils.book_new();
-
-// 6) A~E열 노랑색 채우기 (조건 만족하는 행들)
-const XLSX_utils = XLSX.utils;
-
-// highlightIndexSet은 정렬 전 인덱스를 기준으로 만들어졌지만,
-// 위에서 sort를 했기 때문에, 좀 더 정확하게 하려면
-// 정렬 후 다시 그룹을 만들거나, 정렬 전에 정렬 기준/인덱스를 같이 관리해야 해.
-// 여기서는 정렬 전에 만든 인덱스를 그대로 쓰면 안 맞을 수 있어
-// → 간단하게 "정렬 이후 기준"으로 다시 계산하는 버전으로 작성하자.
-
-const recipientToIndicesAfterSort = {};
-transformedRows.forEach((row, idx) => {
-  const name  = (row["받는분성명"] ?? "").toString().trim();
-  const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
-  const phone = (row["받는분전화번호"] ?? "").toString().trim();
-  if (!name || !addr || !phone) return;
-  const key = `${name}||${addr}||${phone}`;
-  if (!recipientToIndicesAfterSort[key]) recipientToIndicesAfterSort[key] = [];
-  recipientToIndicesAfterSort[key].push(idx);
-});
-
-// 이제 정렬 후 기준으로 다시 조건 체크 → rowIndexToHighlight 세트 만들기
-const rowIndexToHighlight = new Set();
-
-for (const key in recipientToIndicesAfterSort) {
-  const indices = recipientToIndicesAfterSort[key];
-  if (indices.length < 2) continue;
-  indices.forEach((i) => {
-    const row = transformedRows[i];
-    const qty    = Number(row["_adjusted_qty"] ?? 0);
-    const carton = Number(row["_carton"] ?? 0);
-    if (carton > 0 && qty < carton) {
-      rowIndexToHighlight.add(i);
-    }
-  });
-}
-
-// json_to_sheet로 만든 시트에서
-// header가 엑셀 1행(r=0), 데이터가 2행부터(r=1)니까,
-// r = (데이터 인덱스) + 1
-rowIndexToHighlight.forEach((dataIndex) => {
-  const excelRow = dataIndex + 1; // 0:header, 1:첫 데이터행
-
-  for (let c = 0; c < 5; c++) {  // A(0)~E(4)
-    const cellRef = XLSX_utils.encode_cell({ c, r: excelRow });
-    const cell = newWorksheet[cellRef];
-    if (!cell) continue; // 값이 없으면 패스
-
-    if (!cell.s) cell.s = {};
-    cell.s.fill = {
-      patternType: "solid",
-      fgColor: { rgb: "FFFF00" }   // 노랑색
-    };
-  }
-});
-
-// 7) 워크북에 시트 추가 후 저장
-XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "waybill");
-XLSX.writeFile(newWorkbook, "waybill.xlsx", { compression: true });
-
-statusConvertEl.textContent =
-  `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
+        statusConvertEl.textContent =
+          `변환 완료! 총 ${cleanedRows.length}개의 행이 waybill.xlsx에 포함되었습니다.`;
       } catch (err) {
         console.error(err);
         statusConvertEl.textContent = "변환 중 오류가 발생했습니다.";
@@ -560,7 +466,6 @@ statusConvertEl.textContent =
       convertBtn.disabled = !enable;
     }
 
-    // 매핑 UI 만들기 (주문 파일 기준)
     function buildMappingUI(headers) {
       if (!headers || headers.length === 0) {
         mappingEl.textContent = "주문 파일의 컬럼을 찾을 수 없습니다.";
@@ -593,7 +498,6 @@ statusConvertEl.textContent =
       mappingEl.innerHTML = html;
     }
 
-    // 매핑 정보 읽기
     function getMapping() {
       const mapping = {};
       for (const field of WAYBILL_FIELDS) {
@@ -605,7 +509,6 @@ statusConvertEl.textContent =
       return mapping;
     }
 
-    // 숫자 변환
     function toNumberOrZero(value) {
       if (value === null || value === undefined) return 0;
       if (value === "") return 0;
@@ -613,11 +516,10 @@ statusConvertEl.textContent =
       return Number.isFinite(num) ? num : 0;
     }
 
-    // 핵심 변환 로직
+    // 🔹 핵심 변환 로직
     function applyRules(rows, mapping) {
       let workingRows = [...rows];
 
-      // 0. 알파 전용 선처리: 발주처 & 수령자명 모두 "안성물류"면 주문량 0으로 강제
       if (selectedVendor === "알파") {
         workingRows = workingRows.map((row) => {
           const purchaser = (row["발주처"] ?? "").toString().trim();
@@ -630,7 +532,6 @@ statusConvertEl.textContent =
         });
       }
 
-      // 1. 알파 전용: 주문량 0 행 제거
       if (selectedVendor === "알파") {
         workingRows = workingRows.filter((row) => {
           const raw = row["주문량"];
@@ -640,11 +541,8 @@ statusConvertEl.textContent =
         });
       }
 
-      // 2. 행 단위 변환
       const result = workingRows.map((row) => {
         const out = {};
-
-        // 내부 임시 수량
         let internalQty = 0;
 
         if (selectedVendor === "알파") {
@@ -661,26 +559,21 @@ statusConvertEl.textContent =
             }
           }
 
-          if (isArtMate) {
-            internalQty = orderQty;
-          } else {
-            internalQty = unitsPerBox * orderQty;
-          }
+          internalQty = isArtMate ? orderQty : unitsPerBox * orderQty;
         } else {
           internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
         }
 
-        // 카톤 규칙용
-        let adjustedQty   = internalQty; // 품목명 뒤에 붙는 최종 수량
-        let boxQty        = 1;           // 박스수량
-        let cartonForRule = 0;          // 비교용 카톤 값
+        let adjustedQty = internalQty;
+        let boxQty = 1;
+        let cartonForRow = 0;
 
         if (selectedVendor === "알파") {
           const code = (row["상품코드"] ?? "").toString().trim();
           if (code && alphaGoodsByCode.has(code)) {
-            const goods  = alphaGoodsByCode.get(code);
+            const goods = alphaGoodsByCode.get(code);
             const carton = toNumberOrZero(goods.카톤);
-            cartonForRule = carton;
+            cartonForRow = carton;
 
             if (carton > 0 && internalQty > carton) {
               boxQty = Math.floor(internalQty / carton);
@@ -689,28 +582,25 @@ statusConvertEl.textContent =
           }
         }
 
-        // 필드별 채우기
         for (const field of WAYBILL_FIELDS) {
           const key = field.key;
 
-          // (1) 보내는분 주소/전화 고정
           if (key === "보내는분주소(전체, 분할)") {
             out[key] = "경기도 김포시 애기봉로 206";
             continue;
           }
+
           if (key === "보내는분전화번호") {
             out[key] = "031-987-9495";
             continue;
           }
 
-          // (2) 알파: 발주처=안성물류 → 보내는분성명=알파 안성
           if (selectedVendor === "알파" && key === "보내는분성명") {
             const purchaser = (row["발주처"] ?? "").toString().trim();
             out[key] = purchaser === "안성물류" ? "알파 안성" : "";
             continue;
           }
 
-          // (3) 알파: 수령자 정보 매핑
           if (selectedVendor === "알파") {
             if (key === "받는분성명") {
               out[key] = row["수령자명"] ?? "";
@@ -732,29 +622,14 @@ statusConvertEl.textContent =
             }
           }
 
-          // (4) 알파: 기본운임
-          // - 기본: 품목 파일 "기본"
-          // - 단, waybill 수량(adjustedQty) == 카톤이면 "운임" 사용
           if (selectedVendor === "알파" && key === "기본운임") {
             let value = "";
 
             const code = (row["상품코드"] ?? "").toString().trim();
             if (code && alphaGoodsByCode.has(code)) {
               const goods      = alphaGoodsByCode.get(code);
-              const cartonNum  = toNumberOrZero(goods.카톤);
               const basicFare  = goods.기본;
-              const shipFare   = goods.운임;
-              const qtyForFare = toNumberOrZero(adjustedQty);
-
               if (
-                cartonNum > 0 &&
-                qtyForFare === cartonNum &&
-                shipFare !== undefined &&
-                shipFare !== null &&
-                shipFare !== ""
-              ) {
-                value = shipFare;
-              } else if (
                 basicFare !== undefined &&
                 basicFare !== null &&
                 basicFare !== ""
@@ -774,7 +649,6 @@ statusConvertEl.textContent =
             continue;
           }
 
-          // (5) 알파: 품목명 = (품목명) + " - " + adjustedQty + "EA"
           if (selectedVendor === "알파" && key === "품목명") {
             let baseName = "";
             const code = (row["상품코드"] ?? "").toString().trim();
@@ -797,13 +671,11 @@ statusConvertEl.textContent =
             continue;
           }
 
-          // (6) 알파: 박스수량 = boxQty
           if (selectedVendor === "알파" && key === "박스수량") {
             out[key] = boxQty;
             continue;
           }
 
-          // (7) 나머지: 매핑 UI에 따른 기본 처리
           const mappedHeader = mapping[key];
 
           if (!mappedHeader) {
@@ -825,10 +697,10 @@ statusConvertEl.textContent =
           }
         }
 
-        // 내부 임시 필드 (엑셀 내보내기 전에 제거)
-        out["_internal_qty"] = internalQty;
-        out["_adjusted_qty"] = adjustedQty;
-        out["_carton"]       = cartonForRule;
+        // 내부 필드들 (후처리용)
+        out["_internal_qty"]  = internalQty;
+        out["_adjusted_qty"]  = adjustedQty;
+        out["_carton"]        = cartonForRow;
 
         return out;
       });
@@ -836,7 +708,56 @@ statusConvertEl.textContent =
       return result;
     }
 
-    // 주문 파일 미리보기
+    // 🔹 새 후처리 규칙
+    // - 받는분성명+주소+전화번호가 2개 이상 동일한 그룹이고
+    //   수량(adjusted_qty) < 카톤이면 → 운임구분 = "★★O★★"
+    // - 기본운임이 "X" 인 행은 → 운임구분 = "■■X■■" (우선순위 더 높음)
+    function applyPostFareRules(rows) {
+      const groups = new Map();
+
+      // 그룹핑: 받는분성명 + 주소 + 전화번호
+      rows.forEach((row, idx) => {
+        const name  = (row["받는분성명"] ?? "").toString().trim();
+        const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
+        const phone = (row["받는분전화번호"] ?? "").toString().trim();
+        const key   = `${name}||${addr}||${phone}`;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(idx);
+      });
+
+      rows.forEach((row, idx) => {
+        const name  = (row["받는분성명"] ?? "").toString().trim();
+        const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
+        const phone = (row["받는분전화번호"] ?? "").toString().trim();
+        const key   = `${name}||${addr}||${phone}`;
+        const idxList = groups.get(key) || [];
+        const duplicatedReceiver = idxList.length >= 2;
+
+        const basicFareRaw = row["기본운임"];
+        const basicFareStr = basicFareRaw === null || basicFareRaw === undefined
+          ? ""
+          : String(basicFareRaw).trim().toUpperCase();
+
+        // 1) 기본운임이 X인 행: 운임구분 = "■■X■■" (최우선)
+        if (basicFareStr === "X") {
+          row["운임구분"] = "■■X■■";
+          return;
+        }
+
+        // 2) 수령자 정보가 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
+        if (duplicatedReceiver) {
+          const qty    = toNumberOrZero(row["_adjusted_qty"]);
+          const carton = toNumberOrZero(row["_carton"]);
+          if (carton > 0 && qty < carton) {
+            row["운임구분"] = "★★O★★";
+          }
+        }
+      });
+
+      return rows;
+    }
+
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
         previewEl.innerHTML = "<em>미리보기할 데이터가 없습니다.</em>";
@@ -871,8 +792,7 @@ statusConvertEl.textContent =
       return String(value)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+        .replace(/>/g, "&quot;");
     }
   </script>
 </body>
