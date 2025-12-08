@@ -168,24 +168,24 @@
   </style>
 </head>
 <body>
-  <ma*in>
+  <main>
     <h1 class="title">운송장 변환</h1>
-    <p class="subtitle">알파 전용 규칙을 사용하여 주문 엑셀을 택배사 waybill 형식으로 변환합니다.</p>
+    <p class="subtitle">알파 / 네이버 전용 규칙을 사용하여 주문 엑셀을 택배사 waybill 형식으로 변환합니다.</p>
 
     <!-- 1. 업체명 선택 -->
     <div class="card">
       <h2>1. 업체명 선택</h2>
-      <p>먼저 어떤 업체의 규칙을 사용할지 선택해 주세요. (현재는 알파 전용 규칙이 적용됩니다.)</p>
+      <p>먼저 어떤 업체의 규칙을 사용할지 선택해 주세요.</p>
 
       <div class="mapping-item" style="max-width: 260px;">
         <label for="vendor-select">업체명</label>
         <select id="vendor-select">
           <option value="">선택하세요</option>
           <option value="알파">알파</option>
-          <option value="네이버">네이버</option>   <!-- 👈 추가 -->
+          <option value="네이버">네이버</option>
         </select>
         <div class="mapping-hint">
-          * "알파" 선택 시 알파 전용 변환 규칙이 적용됩니다.
+          * "알파" 선택 시 알파 전용 규칙, "네이버" 선택 시 네이버 전용 규칙이 적용됩니다.
         </div>
       </div>
       <div class="status" id="status-vendor"></div>
@@ -203,7 +203,7 @@
       <div class="file-input">
         <input type="file" id="file-input-items" accept=".xlsx,.xls" />
       </div>
-      <div class="sub-status" id="status-items">품목 파일을 업로드해 주세요.</div>
+      <div class="sub-status" id="status-items">품목 파일을 업로드해 주세요. (알파 전용 규칙에 필요)</div>
 
       <h3 class="section-title" style="margin-top:20px;">2-2. 주문 파일 업로드</h3>
       <div class="file-input">
@@ -233,15 +233,6 @@
   </main>
 
   <script>
-    // (선택) 단독 접근 시 메인/로그인으로 리다이렉트
-    if (window.top === window.self) {
-      if (sessionStorage.getItem("loggedIn") === "true") {
-        // window.location.href = "main.html"; // 필요시 주석 해제
-      } else {
-        // window.location.href = "index.html";
-      }
-    }
-
     const vendorSelect      = document.getElementById("vendor-select");
     const statusVendorEl    = document.getElementById("status-vendor");
 
@@ -423,10 +414,9 @@
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
 
-        // 1차 변환
         let transformedRows = applyRules(orderRows, mapping);
 
-        // 🔹 새 규칙: 운임구분 후처리
+        // 알파 전용 운임구분 후처리
         transformedRows = applyPostFareRules(transformedRows);
 
         // 받는분성명 기준 정렬
@@ -436,7 +426,6 @@
           return nameA.localeCompare(nameB, "ko");
         });
 
-        // 내부 필드 제거
         const cleanedRows = transformedRows.map(row => {
           const copy = { ...row };
           delete copy["_internal_qty"];
@@ -517,10 +506,11 @@
       return Number.isFinite(num) ? num : 0;
     }
 
-    // 🔹 핵심 변환 로직
+    // 🔹 메인 변환 로직
     function applyRules(rows, mapping) {
       let workingRows = [...rows];
 
+      // 알파 전용 선처리: 발주처 & 수령자명 모두 "안성물류"면 주문량을 0으로
       if (selectedVendor === "알파") {
         workingRows = workingRows.map((row) => {
           const purchaser = (row["발주처"] ?? "").toString().trim();
@@ -533,6 +523,7 @@
         });
       }
 
+      // 알파 전용: 주문량 0 행 제거
       if (selectedVendor === "알파") {
         workingRows = workingRows.filter((row) => {
           const raw = row["주문량"];
@@ -546,6 +537,7 @@
         const out = {};
         let internalQty = 0;
 
+        // 수량 계산
         if (selectedVendor === "알파") {
           const orderQty = toNumberOrZero(row["주문량"]);
           let unitsPerBox = 0;
@@ -569,6 +561,7 @@
         let boxQty = 1;
         let cartonForRow = 0;
 
+        // 카톤 규칙 (알파 전용)
         if (selectedVendor === "알파") {
           const code = (row["상품코드"] ?? "").toString().trim();
           if (code && alphaGoodsByCode.has(code)) {
@@ -586,22 +579,24 @@
         for (const field of WAYBILL_FIELDS) {
           const key = field.key;
 
+          // 보내는분 주소/전화는 모든 업체 공통 고정값
           if (key === "보내는분주소(전체, 분할)") {
             out[key] = "경기도 김포시 애기봉로 206";
             continue;
           }
-
           if (key === "보내는분전화번호") {
             out[key] = "031-987-9495";
             continue;
           }
 
+          // 알파 전용: 발주처=안성물류 → 보내는분성명 = "알파 안성"
           if (selectedVendor === "알파" && key === "보내는분성명") {
             const purchaser = (row["발주처"] ?? "").toString().trim();
             out[key] = purchaser === "안성물류" ? "알파 안성" : "";
             continue;
           }
 
+          // 알파 전용: 수령자 매핑
           if (selectedVendor === "알파") {
             if (key === "받는분성명") {
               out[key] = row["수령자명"] ?? "";
@@ -623,19 +618,58 @@
             }
           }
 
+          // 네이버 전용: 수령자 매핑
+          // 수취인명 → 받는분성명
+          // 통합배송지 → 받는분주소(전체, 분할)
+          // 수취인연락처1 → 받는분전화번호
+          // 수취인연락처2 → 받는분기타연락처
+          if (selectedVendor === "네이버") {
+            if (key === "받는분성명") {
+              out[key] = row["수취인명"] ?? "";
+              continue;
+            }
+            if (key === "받는분주소(전체, 분할)") {
+              out[key] = row["통합배송지"] ?? "";
+              continue;
+            }
+            if (key === "받는분전화번호") {
+              out[key] = row["수취인연락처1"] ?? "";
+              continue;
+            }
+            if (key === "받는분기타연락처") {
+              out[key] = row["수취인연락처2"] ?? "";
+              continue;
+            }
+          }
+
+          // 알파 전용: 기본운임
+          // - 원칙: 기본운임 = 품목파일 "기본"
+          // - 단, waybill 수량(adjustedQty) == 카톤 이고 "운임" 값이 있으면 기본운임 = "운임"
           if (selectedVendor === "알파" && key === "기본운임") {
             let value = "";
 
             const code = (row["상품코드"] ?? "").toString().trim();
             if (code && alphaGoodsByCode.has(code)) {
               const goods      = alphaGoodsByCode.get(code);
+              const cartonNum  = toNumberOrZero(goods.카톤);
               const basicFare  = goods.기본;
+              const shipFare   = goods.운임;
+              const qtyForFare = toNumberOrZero(adjustedQty);
+
               if (
+                cartonNum > 0 &&
+                qtyForFare === cartonNum &&
+                shipFare !== undefined &&
+                shipFare !== null &&
+                shipFare !== ""
+              ) {
+                value = shipFare; // 수량=카톤 → 운임 사용
+              } else if (
                 basicFare !== undefined &&
                 basicFare !== null &&
                 basicFare !== ""
               ) {
-                value = basicFare;
+                value = basicFare; // 그외 → 기본 사용
               }
             }
 
@@ -650,6 +684,7 @@
             continue;
           }
 
+          // 알파 전용: 품목명 = (품목파일 품목명 or 매핑값) + " - " + adjustedQty + "EA"
           if (selectedVendor === "알파" && key === "품목명") {
             let baseName = "";
             const code = (row["상품코드"] ?? "").toString().trim();
@@ -672,11 +707,13 @@
             continue;
           }
 
+          // 알파 전용: 박스수량
           if (selectedVendor === "알파" && key === "박스수량") {
             out[key] = boxQty;
             continue;
           }
 
+          // 그 외 공통: 매핑 UI에 따른 값
           const mappedHeader = mapping[key];
 
           if (!mappedHeader) {
@@ -698,7 +735,7 @@
           }
         }
 
-        // 내부 필드들 (후처리용)
+        // 후처리용 내부 필드
         out["_internal_qty"]  = internalQty;
         out["_adjusted_qty"]  = adjustedQty;
         out["_carton"]        = cartonForRow;
@@ -709,14 +746,14 @@
       return result;
     }
 
-    // 🔹 새 후처리 규칙
-    // - 받는분성명+주소+전화번호가 2개 이상 동일한 그룹이고
-    //   수량(adjusted_qty) < 카톤이면 → 운임구분 = "★★O★★"
-    // - 기본운임이 "X" 인 행은 → 운임구분 = "■■X■■" (우선순위 더 높음)
+    // 🔹 알파 전용 운임구분 후처리
+    // - 기본운임이 "X" 이면 운임구분 = "■■X■■" (최우선)
+    // - 받는분성명+주소+전화가 2개 이상 중복이고, 수량(adjusted_qty) < 카톤 → 운임구분 = "★★O★★"
     function applyPostFareRules(rows) {
+      if (selectedVendor !== "알파") return rows;
+
       const groups = new Map();
 
-      // 그룹핑: 받는분성명 + 주소 + 전화번호
       rows.forEach((row, idx) => {
         const name  = (row["받는분성명"] ?? "").toString().trim();
         const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
@@ -740,13 +777,13 @@
           ? ""
           : String(basicFareRaw).trim().toUpperCase();
 
-        // 1) 기본운임이 X인 행: 운임구분 = "■■X■■" (최우선)
+        // 1) 기본운임이 X인 행: 운임구분 = "■■X■■"
         if (basicFareStr === "X") {
           row["운임구분"] = "■■X■■";
           return;
         }
 
-        // 2) 수령자 정보가 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
+        // 2) 수취인(성명+주소+전화) 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
         if (duplicatedReceiver) {
           const qty    = toNumberOrZero(row["_adjusted_qty"]);
           const carton = toNumberOrZero(row["_carton"]);
@@ -758,34 +795,6 @@
 
       return rows;
     }
-    
-// (3-네이버) 네이버 전용: 수령자 정보 매핑
-// 주문시트 = 운송장양식
-// 수취인명        → 받는분성명
-// 통합배송지      → 받는분주소(전체, 분할)
-// 수취인연락처1   → 받는분전화번호
-// 수취인연락처2   → 받는분기타연락처
-if (selectedVendor === "네이버") {
-  if (key === "받는분성명") {
-    out[key] = row["수취인명"] ?? "";
-    continue;
-  }
-
-  if (key === "받는분주소(전체, 분할)") {
-    out[key] = row["통합배송지"] ?? "";
-    continue;
-  }
-
-  if (key === "받는분전화번호") {
-    out[key] = row["수취인연락처1"] ?? "";
-    continue;
-  }
-
-  if (key === "받는분기타연락처") {
-    out[key] = row["수취인연락처2"] ?? "";
-    continue;
-  }
-}
 
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
@@ -819,9 +828,9 @@ if (selectedVendor === "네이버") {
     function escapeHtml(value) {
       if (value === null || value === undefined) return "";
       return String(value)
-*        .replace(/&/g, "&amp;")
+        .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&quot;");
+        .replace(/"/g, "&quot;");
     }
   </script>
 </body>
