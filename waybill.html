@@ -708,55 +708,58 @@
       return result;
     }
 
-    // 🔹 새 후처리 규칙
-    // - 받는분성명+주소+전화번호가 2개 이상 동일한 그룹이고
-    //   수량(adjusted_qty) < 카톤이면 → 운임구분 = "★★O★★"
-    // - 기본운임이 "X" 인 행은 → 운임구분 = "■■X■■" (우선순위 더 높음)
-    function applyPostFareRules(rows) {
-      const groups = new Map();
+// 🔹 후처리 규칙
+// 1) 기본운임이 "X" → 운임구분 = "■■X■■"
+// 2) 같은 받는분성명 + 받는분주소 조합이 2개 이상 있고,
+//    수량(_adjusted_qty) < 카톤(_carton) 이면 → 운임구분 = "★★O★★"
+function applyPostFareRules(rows) {
+  const groups = new Map();
 
-      // 그룹핑: 받는분성명 + 주소 + 전화번호
-      rows.forEach((row, idx) => {
-        const name  = (row["받는분성명"] ?? "").toString().trim();
-        const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
-        const phone = (row["받는분전화번호"] ?? "").toString().trim();
-        const key   = `${name}||${addr}||${phone}`;
+  // 1단계: 수령자 그룹핑 (이름 + 주소 기준, 전화번호는 제외)
+  rows.forEach((row, idx) => {
+    const name = (row["받는분성명"] ?? "").toString().trim();
+    const addr = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
 
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(idx);
-      });
+    if (!name && !addr) return; // 둘 다 없으면 그룹핑 불필요
 
-      rows.forEach((row, idx) => {
-        const name  = (row["받는분성명"] ?? "").toString().trim();
-        const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
-        const phone = (row["받는분전화번호"] ?? "").toString().trim();
-        const key   = `${name}||${addr}||${phone}`;
-        const idxList = groups.get(key) || [];
-        const duplicatedReceiver = idxList.length >= 2;
+    const key = `${name}||${addr}`;
 
-        const basicFareRaw = row["기본운임"];
-        const basicFareStr = basicFareRaw === null || basicFareRaw === undefined
-          ? ""
-          : String(basicFareRaw).trim().toUpperCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(idx);
+  });
 
-        // 1) 기본운임이 X인 행: 운임구분 = "■■X■■" (최우선)
-        if (basicFareStr === "X") {
-          row["운임구분"] = "■■X■■";
-          return;
-        }
+  // 2단계: 각 행에 대해 규칙 적용
+  rows.forEach((row, idx) => {
+    const name = (row["받는분성명"] ?? "").toString().trim();
+    const addr = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
+    const key  = `${name}||${addr}`;
+    const idxList = groups.get(key) || [];
+    const duplicatedReceiver = idxList.length >= 2; // 같은 사람 2건 이상
 
-        // 2) 수령자 정보가 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
-        if (duplicatedReceiver) {
-          const qty    = toNumberOrZero(row["_adjusted_qty"]);
-          const carton = toNumberOrZero(row["_carton"]);
-          if (carton > 0 && qty < carton) {
-            row["운임구분"] = "★★O★★";
-          }
-        }
-      });
+    const basicFareRaw = row["기본운임"];
+    const basicFareStr = basicFareRaw == null
+      ? ""
+      : String(basicFareRaw).trim().toUpperCase();
 
-      return rows;
+    // 1) 기본운임 "X" 우선 적용
+    if (basicFareStr === "X") {
+      row["운임구분"] = "■■X■■";
+      return; // 여기서 끝, 아래 규칙은 덮어쓰지 않음
     }
+
+    // 2) 같은 수령자 여러 건 + 수량 < 카톤 → "★★O★★"
+    if (duplicatedReceiver) {
+      const qty    = toNumberOrZero(row["_adjusted_qty"]);
+      const carton = toNumberOrZero(row["_carton"]);
+
+      if (carton > 0 && qty < carton) {
+        row["운임구분"] = "★★O★★";
+      }
+    }
+  });
+
+  return rows;
+}
 
     function showPreviewTable(rows) {
       if (!rows || rows.length === 0) {
