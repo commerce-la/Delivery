@@ -533,9 +533,11 @@
         });
       }
 
-      const result = workingRows.map((row) => {
-        const out = {};
+      const result = [];
+
+      workingRows.forEach((row) => {
         let internalQty = 0;
+        let cartonForRow = 0;
 
         // 수량 계산
         if (selectedVendor === "알파") {
@@ -550,200 +552,233 @@
             if (goods.상품분류1 === "아트메이트") {
               isArtMate = true;
             }
+            cartonForRow = toNumberOrZero(goods.카톤);
           }
 
           internalQty = isArtMate ? orderQty : unitsPerBox * orderQty;
         } else {
           internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
+          cartonForRow = 0; // 네이버 등은 카톤 규칙 없음
         }
 
-        let adjustedQty = internalQty;
-        let boxQty = 1;
-        let cartonForRow = 0;
+        // 카톤/나머지 계산
+        let adjustedQtyMain;
+        let boxQtyMain;
+        let remainder = 0;
 
-        // 카톤 규칙 (알파 전용)
-        if (selectedVendor === "알파") {
-          const code = (row["상품코드"] ?? "").toString().trim();
-          if (code && alphaGoodsByCode.has(code)) {
-            const goods = alphaGoodsByCode.get(code);
-            const carton = toNumberOrZero(goods.카톤);
-            cartonForRow = carton;
+        if (
+          selectedVendor === "알파" &&
+          cartonForRow > 0 &&
+          internalQty > cartonForRow
+        ) {
+          const quotient = Math.floor(internalQty / cartonForRow);
+          remainder = internalQty - quotient * cartonForRow;
 
-            if (carton > 0 && internalQty > carton) {
-              boxQty = Math.floor(internalQty / carton);
-              adjustedQty = carton;
-            }
-          }
+          adjustedQtyMain = cartonForRow;
+          boxQtyMain = quotient;
+        } else {
+          adjustedQtyMain = internalQty;
+          boxQtyMain = 1;
+          remainder = 0;
         }
 
-        for (const field of WAYBILL_FIELDS) {
-          const key = field.key;
+        // 기본 행 생성 (카톤 기준, 또는 전체 수량)
+        const baseRow = buildWaybillRowFromSource(
+          row,
+          mapping,
+          internalQty,
+          adjustedQtyMain,
+          boxQtyMain,
+          cartonForRow
+        );
+        result.push(baseRow);
 
-          // 보내는분 주소/전화는 모든 업체 공통 고정값
-          if (key === "보내는분주소(전체, 분할)") {
-            out[key] = "경기도 김포시 애기봉로 206";
-            continue;
-          }
-          if (key === "보내는분전화번호") {
-            out[key] = "031-987-9495";
-            continue;
-          }
-
-          // 알파 전용: 발주처=안성물류 → 보내는분성명 = "알파 안성"
-          if (selectedVendor === "알파" && key === "보내는분성명") {
-            const purchaser = (row["발주처"] ?? "").toString().trim();
-            out[key] = purchaser === "안성물류" ? "알파 안성" : "";
-            continue;
-          }
-
-          // 알파 전용: 수령자 매핑
-          if (selectedVendor === "알파") {
-            if (key === "받는분성명") {
-              out[key] = row["수령자명"] ?? "";
-              continue;
-            }
-            if (key === "받는분주소(전체, 분할)") {
-              out[key] = row["수령자 주소"] ?? "";
-              continue;
-            }
-            if (key === "받는분전화번호") {
-              const phone1 = (row["수령자 전화번호"] ?? "").toString().trim();
-              const phone2 = (row["수령자 휴대전화"] ?? "").toString().trim();
-              out[key] = phone1 || phone2 || "";
-              continue;
-            }
-            if (key === "받는분기타연락처") {
-              out[key] = row["수령자 휴대전화"] ?? "";
-              continue;
-            }
-          }
-
-          // 네이버 전용: 수령자 매핑
-          // 수취인명 → 받는분성명
-          // 통합배송지 → 받는분주소(전체, 분할)
-          // 수취인연락처1 → 받는분전화번호
-          // 수취인연락처2 → 받는분기타연락처
-          if (selectedVendor === "네이버") {
-            if (key === "받는분성명") {
-              out[key] = row["수취인명"] ?? "";
-              continue;
-            }
-            if (key === "받는분주소(전체, 분할)") {
-              out[key] = row["통합배송지"] ?? "";
-              continue;
-            }
-            if (key === "받는분전화번호") {
-              out[key] = row["수취인연락처1"] ?? "";
-              continue;
-            }
-            if (key === "받는분기타연락처") {
-              out[key] = row["수취인연락처2"] ?? "";
-              continue;
-            }
-          }
-
-          // 알파 전용: 기본운임
-          // - 원칙: 기본운임 = 품목파일 "기본"
-          // - 단, waybill 수량(adjustedQty) == 카톤 이고 "운임" 값이 있으면 기본운임 = "운임"
-          if (selectedVendor === "알파" && key === "기본운임") {
-            let value = "";
-
-            const code = (row["상품코드"] ?? "").toString().trim();
-            if (code && alphaGoodsByCode.has(code)) {
-              const goods      = alphaGoodsByCode.get(code);
-              const cartonNum  = toNumberOrZero(goods.카톤);
-              const basicFare  = goods.기본;
-              const shipFare   = goods.운임;
-              const qtyForFare = toNumberOrZero(adjustedQty);
-
-              if (
-                cartonNum > 0 &&
-                qtyForFare === cartonNum &&
-                shipFare !== undefined &&
-                shipFare !== null &&
-                shipFare !== ""
-              ) {
-                value = shipFare; // 수량=카톤 → 운임 사용
-              } else if (
-                basicFare !== undefined &&
-                basicFare !== null &&
-                basicFare !== ""
-              ) {
-                value = basicFare; // 그외 → 기본 사용
-              }
-            }
-
-            if (!value) {
-              const mappedHeader = mapping[key];
-              if (mappedHeader) {
-                value = row[mappedHeader] ?? "";
-              }
-            }
-
-            out[key] = value;
-            continue;
-          }
-
-          // 알파 전용: 품목명 = (품목파일 품목명 or 매핑값) + " - " + adjustedQty + "EA"
-          if (selectedVendor === "알파" && key === "품목명") {
-            let baseName = "";
-            const code = (row["상품코드"] ?? "").toString().trim();
-
-            if (code && alphaGoodsByCode.has(code)) {
-              const goods = alphaGoodsByCode.get(code);
-              if (goods && goods.품목명) {
-                baseName = goods.품목명;
-              }
-            }
-
-            if (!baseName) {
-              const mappedHeaderForItem = mapping[key];
-              if (mappedHeaderForItem) {
-                baseName = row[mappedHeaderForItem] ?? "";
-              }
-            }
-
-            out[key] = `${baseName} - ${adjustedQty}EA`;
-            continue;
-          }
-
-          // 알파 전용: 박스수량
-          if (selectedVendor === "알파" && key === "박스수량") {
-            out[key] = boxQty;
-            continue;
-          }
-
-          // 그 외 공통: 매핑 UI에 따른 값
-          const mappedHeader = mapping[key];
-
-          if (!mappedHeader) {
-            if (key === "박스수량") {
-              out[key] = 1;
-            } else {
-              out[key] = "";
-            }
-            continue;
-          }
-
-          const value = row[mappedHeader];
-
-          if (key === "박스수량") {
-            const num = Number(value);
-            out[key] = Number.isFinite(num) && num > 0 ? num : 1;
-          } else {
-            out[key] = value ?? "";
-          }
+        // 🔹 나머지가 있을 경우, 동일 수취인 정보로 새 행 추가
+        if (
+          selectedVendor === "알파" &&
+          cartonForRow > 0 &&
+          remainder > 0
+        ) {
+          const remainderRow = buildWaybillRowFromSource(
+            row,
+            mapping,
+            internalQty,
+            remainder,   // 나머지 수량
+            1,           // 박스수량 1
+            cartonForRow
+          );
+          result.push(remainderRow);
         }
-
-        // 후처리용 내부 필드
-        out["_internal_qty"]  = internalQty;
-        out["_adjusted_qty"]  = adjustedQty;
-        out["_carton"]        = cartonForRow;
-
-        return out;
       });
 
       return result;
+    }
+
+    // 🔧 개별 행(waybill 한 줄) 생성 함수
+    function buildWaybillRowFromSource(srcRow, mapping, internalQty, adjustedQty, boxQty, cartonForRow) {
+      const out = {};
+
+      for (const field of WAYBILL_FIELDS) {
+        const key = field.key;
+
+        // 보내는분 주소/전화는 모든 업체 공통 고정값
+        if (key === "보내는분주소(전체, 분할)") {
+          out[key] = "경기도 김포시 애기봉로 206";
+          continue;
+        }
+        if (key === "보내는분전화번호") {
+          out[key] = "031-987-9495";
+          continue;
+        }
+
+        // 알파 전용: 발주처=안성물류 → 보내는분성명 = "알파 안성"
+        if (selectedVendor === "알파" && key === "보내는분성명") {
+          const purchaser = (srcRow["발주처"] ?? "").toString().trim();
+          out[key] = purchaser === "안성물류" ? "알파 안성" : "";
+          continue;
+        }
+
+        // 알파 전용: 수령자 매핑
+        if (selectedVendor === "알파") {
+          if (key === "받는분성명") {
+            out[key] = srcRow["수령자명"] ?? "";
+            continue;
+          }
+          if (key === "받는분주소(전체, 분할)") {
+            out[key] = srcRow["수령자 주소"] ?? "";
+            continue;
+          }
+          if (key === "받는분전화번호") {
+            const phone1 = (srcRow["수령자 전화번호"] ?? "").toString().trim();
+            const phone2 = (srcRow["수령자 휴대전화"] ?? "").toString().trim();
+            out[key] = phone1 || phone2 || "";
+            continue;
+          }
+          if (key === "받는분기타연락처") {
+            out[key] = srcRow["수령자 휴대전화"] ?? "";
+            continue;
+          }
+        }
+
+        // 네이버 전용: 수령자 매핑
+        if (selectedVendor === "네이버") {
+          if (key === "받는분성명") {
+            out[key] = srcRow["수취인명"] ?? "";
+            continue;
+          }
+          if (key === "받는분주소(전체, 분할)") {
+            out[key] = srcRow["통합배송지"] ?? "";
+            continue;
+          }
+          if (key === "받는분전화번호") {
+            out[key] = srcRow["수취인연락처1"] ?? "";
+            continue;
+          }
+          if (key === "받는분기타연락처") {
+            out[key] = srcRow["수취인연락처2"] ?? "";
+            continue;
+          }
+        }
+
+        // 알파 전용: 기본운임
+        // - adjustedQty == 카톤 & 운임값 있으면 → 운임 사용
+        // - 그 외 → 기본 사용
+        if (selectedVendor === "알파" && key === "기본운임") {
+          let value = "";
+
+          const code = (srcRow["상품코드"] ?? "").toString().trim();
+          if (code && alphaGoodsByCode.has(code)) {
+            const goods      = alphaGoodsByCode.get(code);
+            const cartonNum  = toNumberOrZero(goods.카톤);
+            const basicFare  = goods.기본;
+            const shipFare   = goods.운임;
+            const qtyForFare = toNumberOrZero(adjustedQty);
+
+            if (
+              cartonNum > 0 &&
+              qtyForFare === cartonNum &&
+              shipFare !== undefined &&
+              shipFare !== null &&
+              shipFare !== ""
+            ) {
+              value = shipFare;
+            } else if (
+              basicFare !== undefined &&
+              basicFare !== null &&
+              basicFare !== ""
+            ) {
+              value = basicFare;
+            }
+          }
+
+          if (!value) {
+            const mappedHeader = mapping[key];
+            if (mappedHeader) {
+              value = srcRow[mappedHeader] ?? "";
+            }
+          }
+
+          out[key] = value;
+          continue;
+        }
+
+        // 알파 전용: 품목명 = (품목파일 품목명 or 매핑값) + " - " + adjustedQty + "EA"
+        if (selectedVendor === "알파" && key === "품목명") {
+          let baseName = "";
+          const code = (srcRow["상품코드"] ?? "").toString().trim();
+
+          if (code && alphaGoodsByCode.has(code)) {
+            const goods = alphaGoodsByCode.get(code);
+            if (goods && goods.품목명) {
+              baseName = goods.품목명;
+            }
+          }
+
+          if (!baseName) {
+            const mappedHeaderForItem = mapping[key];
+            if (mappedHeaderForItem) {
+              baseName = srcRow[mappedHeaderForItem] ?? "";
+            }
+          }
+
+          out[key] = `${baseName} - ${adjustedQty}EA`;
+          continue;
+        }
+
+        // 알파 전용: 박스수량
+        if (selectedVendor === "알파" && key === "박스수량") {
+          out[key] = boxQty;
+          continue;
+        }
+
+        // 그 외 공통: 매핑 UI에 따른 값 사용
+        const mappedHeader = mapping[key];
+
+        if (!mappedHeader) {
+          if (key === "박스수량") {
+            out[key] = 1;
+          } else {
+            out[key] = "";
+          }
+          continue;
+        }
+
+        const value = srcRow[mappedHeader];
+
+        if (key === "박스수량") {
+          const num = Number(value);
+          out[key] = Number.isFinite(num) && num > 0 ? num : 1;
+        } else {
+          out[key] = value ?? "";
+        }
+      }
+
+      // 후처리용 내부 필드
+      out["_internal_qty"]  = internalQty;
+      out["_adjusted_qty"]  = adjustedQty;
+      out["_carton"]        = cartonForRow;
+
+      return out;
     }
 
     // 🔹 알파 전용 운임구분 후처리
@@ -783,7 +818,7 @@
           return;
         }
 
-        // 2) 수취인(성명+주소+전화) 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
+        // 2) 수취인 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
         if (duplicatedReceiver) {
           const qty    = toNumberOrZero(row["_adjusted_qty"]);
           const carton = toNumberOrZero(row["_carton"]);
