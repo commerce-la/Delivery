@@ -5,11 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PDF → 운송장 엑셀 변환 (OCR)</title>
 
-  <!-- pdf.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
-  <!-- tesseract.js -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -39,18 +36,12 @@
     .bar { background:#1e293b; border-radius:999px; height:10px; overflow:hidden; border:1px solid rgba(148,163,184,.25); }
     .bar > div { height:100%; width:0%; background:#38bdf8; transition:width .2s; }
     .ptext { font-size:12px; color:#a5b4fc; margin-top:6px; }
-    .kv { margin-top:10px; font-size:12px; color:#9ca3af; display:flex; gap:10px; flex-wrap:wrap; }
-    .kv b { color:#e5e7eb; font-weight:600; }
-    code { color:#e5e7eb; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>PDF → 운송장(waybill) 엑셀 변환 (OCR)</h1>
-    <p>
-      PDF 업로드 → (브라우저에서) 렌더링 & OCR → 주문 레코드 파싱 → 운송장 엑셀 다운로드<br>
-      출력 컬럼: <b>받는분성명, 받는분주소(전체, 분할), 받는분전화번호, 받는분기타연락처, 품목명, 수량</b>
-    </p>
+    <p>PDF 업로드 → 렌더링 & OCR → 주문 레코드 파싱 → 운송장 엑셀 다운로드</p>
 
     <div class="card">
       <div class="row">
@@ -69,34 +60,24 @@
       <div class="status" id="status"></div>
 
       <div class="grid">
-        <div>
-          <div class="panel">
-            <h3>실시간 로그</h3>
-            <div class="log" id="log"></div>
-          </div>
-
+        <div class="panel">
+          <h3>실시간 로그</h3>
+          <div class="log" id="log"></div>
           <div class="hint">
-            • 진행률은 “(현재 페이지-1 + 페이지 OCR 진행률) / 전체 페이지”로 계산합니다.<br>
-            • 취소 버튼을 누르면 OCR/처리가 중단됩니다.<br>
-            • 네이버 주문내역처럼 “주문번호(20으로 시작하는 긴 숫자)”가 있는 형식은 자동으로 주문 레코드를 분리합니다.
+            • 진행률이 0%로 보이는 문제를 막기 위해, 단계별로 강제 진행률을 올립니다.<br>
+            • 첫 실행은 kor 언어 데이터 다운로드/초기화 때문에 시간이 더 걸릴 수 있습니다.
           </div>
         </div>
 
         <div class="panel">
           <h3>페이지 미리보기(썸네일)</h3>
           <div class="thumbs" id="thumbs"></div>
-          <div class="kv">
-            <span><b>OCR 언어</b>: kor+eng</span>
-            <span><b>렌더 스케일</b>: <code id="scaleLabel">2.8</code></span>
-            <span><b>썸네일</b>: 저해상도</span>
-          </div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // pdf.js worker
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js";
 
@@ -112,25 +93,21 @@
     const progressBarEl = $("progressBar");
     const progressTextEl = $("progressText");
     const thumbsEl = $("thumbs");
-    const scaleLabelEl = $("scaleLabel");
 
-    // 조절 포인트: OCR 정확도(품질) vs 속도
-    // 값이 높을수록 정확도↑ 속도↓
+    // 정확도 vs 속도 (높을수록 정확도↑ 속도↓)
     const OCR_RENDER_SCALE = 2.8;
-    scaleLabelEl.textContent = OCR_RENDER_SCALE.toFixed(1);
-
     const THUMB_SCALE = 0.7;
 
-    const WAYBILL_COLUMNS = [
-      "받는분성명",
-      "받는분주소(전체, 분할)",
-      "받는분전화번호",
-      "받는분기타연락처",
-      "품목명",
-      "수량",
-    ];
+    // 단계별 진행률 배분
+    const STAGE = {
+      LOAD:   { base: 0,  span:  5 },  // 0~5
+      THUMB:  { base: 5,  span: 15 },  // 5~20
+      RENDER: { base: 20, span: 10 },  // 20~30
+      OCR:    { base: 30, span: 60 },  // 30~90
+      PARSE:  { base: 90, span:  5 },  // 90~95
+      XLSX:   { base: 95, span:  5 },  // 95~100
+    };
 
-    // ---- 진행 상태 관리 ----
     let cancelRequested = false;
     let totalPages = 0;
     let currentPage = 0;
@@ -154,11 +131,19 @@
     }
     function setStatus(msg) { statusEl.textContent = msg; }
     function setStage(msg) { stageInfoEl.textContent = `단계: ${msg}`; }
+
     function setOverallProgress(pct) {
       const clamped = Math.max(0, Math.min(100, pct));
       progressBarEl.style.width = clamped.toFixed(1) + "%";
       progressTextEl.textContent = `전체 진행률: ${clamped.toFixed(1)}%`;
     }
+
+    function setProgressSegment(stage, local01) {
+      const s = STAGE[stage];
+      const v = s.base + s.span * Math.max(0, Math.min(1, local01));
+      setOverallProgress(v);
+    }
+
     function clean(s) { return (s ?? "").toString().replace(/\s+/g, " ").trim(); }
     function normalizePhone(s) { return clean(s).replace(/[^0-9\-]/g, ""); }
 
@@ -166,14 +151,12 @@
       if (cancelRequested) throw new Error("사용자가 취소했습니다.");
     }
 
-    // ======================
-    // 네이버 PDF 파싱용 정규식
-    // ======================
-    const RE_ORDERNO = /\b20\d{10,14}\b/;          // 주문번호(20으로 시작)
-    const RE_DATE = /\b20\d{2}\.\d{2}\.\d{2}\b/;   // 2026.12.31
-    const RE_PHONE = /\b0\d{1,2}-\d{3,4}-\d{4}\b/; // 010-1234-5678
-    const RE_POST = /\(\d{5}\)/;                   // (12345)
-    const RE_QTY_PAREN = /\(\s*(\d+)\s*개\s*\)/;   // (3개)
+    // 네이버 PDF 파싱 정규식
+    const RE_ORDERNO = /\b20\d{10,14}\b/;
+    const RE_DATE = /\b20\d{2}\.\d{2}\.\d{2}\b/;
+    const RE_PHONE = /\b0\d{1,2}-\d{3,4}-\d{4}\b/;
+    const RE_POST = /\(\d{5}\)/;
+    const RE_QTY_PAREN = /\(\s*(\d+)\s*개\s*\)/;
     const RE_QTY_EA = /\b(\d+)\s*(EA|ea|개)\b/;
 
     function splitRecords(lines) {
@@ -182,7 +165,6 @@
       for (const lnRaw of lines) {
         const ln = clean(lnRaw);
         if (!ln) continue;
-
         if (RE_ORDERNO.test(ln)) {
           if (cur.length) records.push(cur);
           cur = [ln];
@@ -197,9 +179,7 @@
     function parseRecord(lines) {
       const joined = lines.join(" ");
       const orderNo = (joined.match(RE_ORDERNO) || [""])[0];
-      const date = (joined.match(RE_DATE) || [""])[0];
 
-      // 전화번호 1~2개
       const phones = [];
       for (const ln of lines) {
         const m = ln.match(RE_PHONE);
@@ -209,7 +189,6 @@
         }
       }
 
-      // 수량
       let qty = "";
       for (const ln of lines) {
         const m1 = ln.match(RE_QTY_PAREN);
@@ -223,7 +202,6 @@
       }
       const qtyNum = qty ? String(qty).replace(/\D/g, "") : "";
 
-      // 이름 후보: "홍길동(....)" 형태 우선
       let name = "";
       for (const ln of lines) {
         const m = ln.match(/^([가-힣]{2,10})\s*\(/);
@@ -235,7 +213,6 @@
         }
       }
 
-      // 주소: (우편번호) 포함 라인 우선
       let addr = "";
       for (const ln of lines) {
         if (RE_POST.test(ln)) { addr = ln; break; }
@@ -243,51 +220,31 @@
       if (!addr) {
         for (const ln of lines) {
           if (/(서울|경기|인천|대전|대구|부산|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(ln) && ln.length >= 12) {
-            addr = ln;
-            break;
+            addr = ln; break;
           }
         }
       }
 
-      // 품목명 후보: 주문번호/날짜/전화/주소/금액/배송방법 제외 후 가장 긴 라인
       const noise = (s) =>
-        RE_ORDERNO.test(s) ||
-        RE_DATE.test(s) ||
-        RE_PHONE.test(s) ||
-        RE_POST.test(s) ||
-        /원\b/.test(s) ||
-        /(택배|등기|소포|배송|CJ|한진|로젠)/i.test(s);
+        RE_ORDERNO.test(s) || RE_DATE.test(s) || RE_PHONE.test(s) || RE_POST.test(s) ||
+        /원\b/.test(s) || /(택배|등기|소포|배송|CJ|한진|로젠)/i.test(s);
 
       let item = "";
-      const candidates = lines
-        .map(clean)
-        .filter(s => s && !noise(s))
-        .filter(s => s.length >= 10);
-
+      const candidates = lines.map(clean).filter(s => s && !noise(s) && s.length >= 10);
       candidates.sort((a,b)=> b.length - a.length);
-
       for (const c of candidates) {
-        // 주소형 문장 제외
         if (/(시|군|구|동|로|길|번길)\b/.test(c) &&
-            /(서울|경기|인천|대전|대구|부산|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(c)) {
-          continue;
-        }
-        item = c;
-        break;
+            /(서울|경기|인천|대전|대구|부산|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(c)) continue;
+        item = c; break;
       }
 
       const itemOut = (item && qtyNum) ? `${item} - ${qtyNum}EA` : item;
 
-      const phone1 = phones[0] || "";
-      const phone2 = phones[1] || "";
-
       return {
-        orderNo,
-        date,
         "받는분성명": name,
         "받는분주소(전체, 분할)": addr,
-        "받는분전화번호": phone1 || phone2 || "",
-        "받는분기타연락처": phone2,
+        "받는분전화번호": phones[0] || phones[1] || "",
+        "받는분기타연락처": phones[1] || "",
         "품목명": itemOut,
         "수량": qtyNum
       };
@@ -296,26 +253,13 @@
     function buildWaybillRows(allLines) {
       const records = splitRecords(allLines);
       const rows = [];
-
       for (const rec of records) {
-        const parsed = parseRecord(rec);
-        if (parsed.orderNo || parsed["받는분성명"] || parsed["받는분주소(전체, 분할)"]) {
-          rows.push({
-            "받는분성명": parsed["받는분성명"],
-            "받는분주소(전체, 분할)": parsed["받는분주소(전체, 분할)"],
-            "받는분전화번호": parsed["받는분전화번호"],
-            "받는분기타연락처": parsed["받는분기타연락처"],
-            "품목명": parsed["품목명"],
-            "수량": parsed["수량"],
-          });
-        }
+        const r = parseRecord(rec);
+        if (r["받는분성명"] || r["받는분주소(전체, 분할)"] || r["품목명"]) rows.push(r);
       }
       return rows;
     }
 
-    // ======================
-    // PDF 렌더링 & OCR
-    // ======================
     async function renderPageToCanvas(pdf, pageNo, scale) {
       const page = await pdf.getPage(pageNo);
       const viewport = page.getViewport({ scale });
@@ -349,13 +293,21 @@
         "kor+eng",
         {
           logger: (m) => {
-            // “전체 기준” 진행률 계산
+            // OCR 진행률이 없거나 늦게 와도, 최소한 페이지 단위로는 올라가게 처리
             if (typeof m.progress === "number" && totalPages > 0 && currentPage > 0) {
-              const overall = ((currentPage - 1) + m.progress) / totalPages * 100;
-              setOverallProgress(overall);
+              const perDoc = ((currentPage - 1) + m.progress) / totalPages; // 0~1
+              setProgressSegment("OCR", perDoc);
+            } else {
+              // progress가 없다면 현재 페이지 기준 "최소 진행률" 반영 (0% 고정 방지)
+              if (totalPages > 0 && currentPage > 0) {
+                const perDocMin = (currentPage - 1) / totalPages;
+                setProgressSegment("OCR", perDocMin);
+              }
             }
-            if (m.status && typeof m.progress === "number") {
-              setStatus(`페이지 ${currentPage}/${totalPages} OCR: ${m.status} (${Math.round(m.progress*100)}%)`);
+
+            if (m.status) {
+              const pp = (typeof m.progress === "number") ? ` (${Math.round(m.progress*100)}%)` : "";
+              setStatus(`페이지 ${currentPage}/${totalPages} OCR: ${m.status}${pp}`);
             }
           }
         }
@@ -365,7 +317,6 @@
       return text || "";
     }
 
-    // ---- UI 이벤트 ----
     pdfFile.addEventListener("change", () => {
       resetUI();
       const file = pdfFile.files?.[0];
@@ -373,8 +324,8 @@
       btnCancel.disabled = true;
 
       if (file) {
-        log(`PDF 선택됨: ${file.name} (${Math.round(file.size/1024)} KB)`);
         setStage("대기");
+        log(`PDF 선택됨: ${file.name} (${Math.round(file.size/1024)} KB)`);
       }
     });
 
@@ -395,60 +346,81 @@
       btnCancel.disabled = false;
 
       try {
+        // LOAD
         setStage("PDF 로딩");
         setStatus("PDF 로딩 중...");
+        setProgressSegment("LOAD", 0.1);
         log("PDF 로딩 시작");
+
         const arrayBuffer = await file.arrayBuffer();
+        setProgressSegment("LOAD", 0.6);
 
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         totalPages = pdf.numPages;
         pageInfoEl.textContent = `페이지: ${totalPages}`;
         log(`페이지 수: ${totalPages}`);
+        setProgressSegment("LOAD", 1.0);
 
         ensureNotCancelled();
 
-        // 썸네일 생성(저해상도)
+        // THUMB
         setStage("썸네일 생성");
         setStatus("페이지 썸네일 생성 중...");
         log("썸네일 생성 시작");
         for (let p = 1; p <= totalPages; p++) {
           ensureNotCancelled();
           await makeThumb(pdf, p);
+          setProgressSegment("THUMB", p / totalPages); // 5~20%
         }
         log("썸네일 생성 완료");
 
-        // OCR
-        setStage("OCR");
+        // RENDER + OCR
         const allLines = [];
+
         for (let p = 1; p <= totalPages; p++) {
           ensureNotCancelled();
           currentPage = p;
 
+          // RENDER 단계: 20~30%를 페이지별로 쪼개서 표시
+          setStage("페이지 렌더링");
           setStatus(`페이지 ${p}/${totalPages} 렌더링 중...`);
           log(`페이지 ${p} 렌더링 (scale=${OCR_RENDER_SCALE})`);
+          setProgressSegment("RENDER", (p - 1) / totalPages);
+
           const canvas = await renderPageToCanvas(pdf, p, OCR_RENDER_SCALE);
 
-          setStatus(`페이지 ${p}/${totalPages} OCR 중...`);
+          // 렌더 끝났으면 해당 페이지 렌더 비중 반영
+          setProgressSegment("RENDER", p / totalPages);
+
+          // OCR 단계
+          setStage("OCR");
+          setStatus(`페이지 ${p}/${totalPages} OCR 준비 중...`);
           log(`페이지 ${p} OCR 시작`);
+          // OCR 시작했음을 반영(0% 고정 방지)
+          setProgressSegment("OCR", (p - 1) / totalPages);
+
           const text = await ocrCanvas(canvas);
 
           const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
           log(`페이지 ${p} OCR 라인: ${lines.length}개`);
           allLines.push(...lines);
 
-          // 페이지 단위 보정(페이지 끝났으면 해당 구간은 100%로 반영)
-          setOverallProgress((p / totalPages) * 100);
+          // 페이지 OCR 완료로 최소한 이만큼은 진행
+          setProgressSegment("OCR", p / totalPages);
         }
 
         ensureNotCancelled();
 
-        // 파싱
+        // PARSE
         setStage("파싱");
         setStatus("주문 레코드 파싱 중...");
-        log("주문번호 기준 레코드 분리/파싱 시작");
-        const rows = buildWaybillRows(allLines);
+        log("주문번호 기준 레코드 파싱 시작");
+        setProgressSegment("PARSE", 0.3);
 
+        const rows = buildWaybillRows(allLines);
         log(`추출된 행 수: ${rows.length}`);
+        setProgressSegment("PARSE", 1.0);
+
         if (!rows.length) {
           setStage("실패");
           setStatus("추출된 행이 없습니다. (주문번호 인식 실패 가능) 로그를 확인하세요.");
@@ -456,24 +428,29 @@
           return;
         }
 
-        // 정렬(요청 스타일)
+        // 정렬
         rows.sort((a,b) => (a["받는분성명"]||"").localeCompare((b["받는분성명"]||""), "ko"));
 
-        // 엑셀 생성/다운로드
+        // XLSX
         setStage("엑셀 생성");
         setStatus("엑셀 생성 중...");
         log("엑셀 생성 시작");
-        const ws = XLSX.utils.json_to_sheet(rows, { header: WAYBILL_COLUMNS });
+        setProgressSegment("XLSX", 0.4);
+
+        const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "waybill");
+
+        setProgressSegment("XLSX", 0.8);
 
         const outName = file.name.replace(/\.pdf$/i, "") + "_waybill.xlsx";
         XLSX.writeFile(wb, outName, { compression: true });
 
+        setProgressSegment("XLSX", 1.0);
         setStage("완료");
-        setOverallProgress(100);
         setStatus("완료! 엑셀 다운로드가 시작되었습니다.");
         log(`완료: ${outName}`);
+
       } catch (err) {
         const msg = (err && err.message) ? err.message : String(err);
         if (msg.includes("취소")) {
