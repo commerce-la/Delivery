@@ -149,7 +149,7 @@
 
     // pdf.js worker (ESM 방식)
     pdfjsLib.GlobalWorkerOptions.workerSrc =
-      new URL("./pdf.worker.mjs", import.meta.url).toString();
+      "/Delivery/libs/pdfjs/pdf.worker.mjs";
 
     // ======= Runtime state =======
     let cancelRequested = false;
