@@ -1,288 +1,74 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PDF → 운송장 엑셀 변환 (OCR)</title>
+  <meta charset="utf-8">
+  <title>OCR 테스트</title>
 
-  <!-- ✅ 로컬 라이브러리: tesseract / xlsx는 기존처럼 script로 OK -->
-  <script defer src="./libs/tesseract/tesseract.min.js"></script>
+  <!-- tesseract / xlsx는 일반 script -->
+  <script defer src="./libs/tesseract/tesseract.js"></script>
   <script defer src="./libs/xlsx/xlsx.full.min.js"></script>
 
   <style>
-    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0f172a; color:#e5e7eb; }
-    .wrap { max-width: 1100px; margin:0 auto; padding:24px 16px 40px; }
-    h1 { font-size:18px; margin:0 0 8px; }
-    p { margin:0 0 14px; color:#cbd5f5; font-size:14px; line-height:1.5; }
-    .card { background: rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.35); border-radius:16px; padding:18px; box-shadow:0 20px 40px rgba(0,0,0,.25); }
-    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-    input[type="file"]{ background:#020617; border:1px solid rgba(148,163,184,.5); color:#e5e7eb; padding:10px; border-radius:12px; }
-    button{ background:#2563eb; color:#fff; border:0; border-radius:999px; padding:10px 18px; cursor:pointer; }
-    button:disabled{ opacity:.55; cursor:not-allowed; }
-    .btn-secondary{ background:#334155; }
-    .pill{ display:inline-block; padding:2px 10px; border-radius:999px; background:rgba(37,99,235,.18); border:1px solid rgba(37,99,235,.35); font-size:12px; color:#cbd5f5; }
-    .status{ margin-top:10px; font-size:13px; color:#a5b4fc; min-height:18px; white-space:pre-wrap; }
-    .log{ margin-top:14px; padding:12px; background:#020617; border:1px solid rgba(148,163,184,.25); border-radius:12px; max-height:260px; overflow:auto; font-size:12px; color:#e5e7eb; white-space:pre-wrap; }
-    .progress-wrap { margin-top:12px; }
-    .bar { background:#1e293b; border-radius:999px; height:10px; overflow:hidden; border:1px solid rgba(148,163,184,.25); }
-    .bar > div { height:100%; width:0%; background:#38bdf8; transition:width .2s; }
-    .ptext { font-size:12px; color:#a5b4fc; margin-top:6px; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .log { white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; height: 200px; overflow: auto; }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <h1>PDF → 운송장(waybill) 엑셀 변환 (OCR)</h1>
-    <p>CDN 없이 로컬 libs 사용. (pdf.mjs 기반)</p>
+  <h2>라이브러리 로드 테스트</h2>
+  <input type="file" id="pdfFile" accept="application/pdf">
+  <button id="btnTest">OCR 테스트</button>
 
-    <div class="card">
-      <div class="row">
-        <input id="pdfFile" type="file" accept="application/pdf" />
-        <button id="btnConvert" disabled>변환 실행</button>
-        <button id="btnCancel" class="btn-secondary" disabled>취소</button>
-        <span class="pill" id="libInfo">라이브러리: 확인 중...</span>
-      </div>
+  <div class="log" id="log"></div>
 
-      <div class="progress-wrap">
-        <div class="bar"><div id="progressBar"></div></div>
-        <div class="ptext" id="progressText">전체 진행률: 0%</div>
-      </div>
-
-      <div class="status" id="status"></div>
-      <div class="log" id="log"></div>
-    </div>
-  </div>
-
-  <!-- ✅ pdf.js는 module로 import -->
+  <!-- pdf.js는 ESM -->
   <script type="module">
     import * as pdfjsLib from "./libs/pdfjs/pdf.mjs";
 
-    const $ = (id) => document.getElementById(id);
-    const pdfFile = $("pdfFile");
-    const btnConvert = $("btnConvert");
-    const btnCancel = $("btnCancel");
-    const libInfoEl = $("libInfo");
-    const statusEl = $("status");
-    const logEl = $("log");
-    const progressBarEl = $("progressBar");
-    const progressTextEl = $("progressText");
-
-    // ✅ ESM worker 설정 (핵심)
+    // pdf.js worker 설정 (ESM 방식)
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       new URL("./pdf.worker.mjs", import.meta.url).toString();
 
+    const logEl = document.getElementById("log");
+    const btn = document.getElementById("btnTest");
+    const input = document.getElementById("pdfFile");
+
     function log(msg) {
-      const time = new Date().toLocaleTimeString();
-      logEl.textContent += `[${time}] ${msg}\n`;
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-    function setStatus(msg) { statusEl.textContent = msg; }
-    function setProgress(pct) {
-      const v = Math.max(0, Math.min(100, pct));
-      progressBarEl.style.width = v.toFixed(1) + "%";
-      progressTextEl.textContent = `전체 진행률: ${v.toFixed(1)}%`;
+      logEl.textContent += msg + "\n";
     }
 
-    function libsOk() {
-      return (typeof window.Tesseract !== "undefined") &&
-             (typeof window.XLSX !== "undefined") &&
-             (typeof pdfjsLib !== "undefined");
-    }
+    // 라이브러리 확인
+    log("pdfjsLib: " + (pdfjsLib ? "OK" : "FAIL"));
+    log("Tesseract: " + (window.Tesseract ? "OK" : "FAIL"));
+    log("XLSX: " + (window.XLSX ? "OK" : "FAIL"));
 
-    // 네이버 PDF 파싱(간단)
-    const RE_ORDERNO = /\b20\d{10,14}\b/;
-    const RE_PHONE = /\b0\d{1,2}-\d{3,4}-\d{4}\b/;
-    const RE_POST = /\(\d{5}\)/;
-    const RE_QTY_PAREN = /\(\s*(\d+)\s*개\s*\)/;
-
-    const OCR_RENDER_SCALE = 2.6;
-
-    function clean(s){ return (s ?? "").toString().replace(/\s+/g," ").trim(); }
-    function normalizePhone(s){ return clean(s).replace(/[^0-9\-]/g, ""); }
-
-    function splitRecords(lines) {
-      const records = [];
-      let cur = [];
-      for (const lnRaw of lines) {
-        const ln = clean(lnRaw);
-        if (!ln) continue;
-        if (RE_ORDERNO.test(ln)) {
-          if (cur.length) records.push(cur);
-          cur = [ln];
-        } else {
-          if (cur.length) cur.push(ln);
-        }
-      }
-      if (cur.length) records.push(cur);
-      return records;
-    }
-
-    function parseRecord(lines) {
-      let name = "";
-      for (const ln of lines) {
-        const m = ln.match(/^([가-힣]{2,10})\s*\(/);
-        if (m) { name = m[1]; break; }
-      }
-
-      let addr = "";
-      for (const ln of lines) {
-        if (RE_POST.test(ln)) { addr = ln; break; }
-      }
-
-      const phones = [];
-      for (const ln of lines) {
-        const m = ln.match(RE_PHONE);
-        if (m) {
-          const p = normalizePhone(m[0]);
-          if (p && !phones.includes(p)) phones.push(p);
-        }
-      }
-
-      let qty = "";
-      for (const ln of lines) {
-        const m = ln.match(RE_QTY_PAREN);
-        if (m) { qty = m[1]; break; }
-      }
-
-      const noise = (s) => RE_ORDERNO.test(s) || RE_POST.test(s) || RE_PHONE.test(s) || /원\b/.test(s);
-      const candidates = lines.map(clean).filter(s => s && !noise(s) && s.length >= 10).sort((a,b)=>b.length-a.length);
-      const item = candidates[0] || "";
-      const itemOut = (item && qty) ? `${item} - ${qty}EA` : item;
-
-      return {
-        "받는분성명": name,
-        "받는분주소(전체, 분할)": addr,
-        "받는분전화번호": phones[0] || phones[1] || "",
-        "받는분기타연락처": phones[1] || "",
-        "품목명": itemOut,
-        "수량": qty
-      };
-    }
-
-    async function renderPageToCanvas(pdf, pageNo, scale) {
-      const page = await pdf.getPage(pageNo);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d", { alpha:false });
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      return canvas;
-    }
-
-    // 초기화
-    log("페이지 로드됨. 라이브러리 확인 중...");
-    const wait = (ms) => new Promise(r => setTimeout(r, ms));
-
-    // tesseract/xlsx는 defer라서 약간 기다렸다가 체크
-    (async () => {
-      for (let i=0; i<50; i++) { // 최대 5초
-        if (libsOk()) break;
-        await wait(100);
-      }
-      if (!libsOk()) {
-        libInfoEl.textContent = "라이브러리: 로드 실패(tesseract/xlsx 확인)";
-        log("tesseract/xlsx 로드 실패: libs 경로/파일명 확인");
+    btn.onclick = async () => {
+      if (!input.files[0]) {
+        alert("PDF 선택");
         return;
       }
-      libInfoEl.textContent = "라이브러리: OK";
-      log("라이브러리 OK. 변환 준비 완료.");
-      btnConvert.disabled = !pdfFile.files?.[0];
-      setStatus("PDF를 선택하고 변환 실행을 눌러주세요.");
-    })();
 
-    pdfFile.addEventListener("change", () => {
-      btnConvert.disabled = !pdfFile.files?.[0] || !libsOk();
-      if (pdfFile.files?.[0]) log(`PDF 선택: ${pdfFile.files[0].name}`);
-    });
+      log("PDF 로딩...");
+      const buf = await input.files[0].arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
 
-    let cancelRequested = false;
-    btnCancel.addEventListener("click", () => {
-      cancelRequested = true;
-      btnCancel.disabled = true;
-      log("취소 요청됨");
-      setStatus("취소 요청됨…");
-    });
+      log("페이지 수: " + pdf.numPages);
 
-    btnConvert.addEventListener("click", async () => {
-      const file = pdfFile.files?.[0];
-      if (!file) return;
-      if (!libsOk()) { log("라이브러리가 로드되지 않았습니다."); return; }
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2.0 });
 
-      cancelRequested = false;
-      btnConvert.disabled = true;
-      btnCancel.disabled = false;
-      setProgress(1);
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
 
-      try {
-        setStatus("PDF 로딩...");
-        log("PDF 로딩 시작");
-        const buf = await file.arrayBuffer();
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      log("OCR 시작...");
 
-        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-        const total = pdf.numPages;
-        log(`페이지 수: ${total}`);
-        setProgress(5);
-
-        const allLines = [];
-        for (let p = 1; p <= total; p++) {
-          if (cancelRequested) throw new Error("취소됨");
-
-          setStatus(`페이지 ${p}/${total} 렌더링...`);
-          const canvas = await renderPageToCanvas(pdf, p, OCR_RENDER_SCALE);
-          setProgress(5 + 25 * (p / total));
-
-          setStatus(`페이지 ${p}/${total} OCR...`);
-          const res = await window.Tesseract.recognize(canvas, "kor+eng", {
-            logger: (m) => {
-              if (typeof m.progress === "number") {
-                setProgress(30 + 60 * ((p - 1 + m.progress) / total));
-              }
-            }
-          });
-
-          const text = res?.data?.text || "";
-          const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-          log(`페이지 ${p} OCR 라인: ${lines.length}`);
-          allLines.push(...lines);
-        }
-
-        setStatus("파싱 중...");
-        setProgress(92);
-
-        const records = splitRecords(allLines);
-        const rows = records.map(parseRecord).filter(r =>
-          r["받는분성명"] || r["받는분주소(전체, 분할)"] || r["품목명"]
-        );
-
-        if (!rows.length) {
-          setStatus("추출된 행이 없습니다. OCR 스케일/패턴을 조정하세요.");
-          log("행 0개. 주문번호 인식 실패 가능.");
-          return;
-        }
-
-        rows.sort((a,b)=>(a["받는분성명"]||"").localeCompare((b["받는분성명"]||""), "ko"));
-
-        setStatus("엑셀 생성...");
-        setProgress(96);
-
-        const ws = window.XLSX.utils.json_to_sheet(rows);
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, "waybill");
-        const outName = file.name.replace(/\.pdf$/i, "") + "_waybill.xlsx";
-        window.XLSX.writeFile(wb, outName, { compression:true });
-
-        setProgress(100);
-        setStatus("완료! 엑셀 다운로드가 시작되었습니다.");
-        log(`완료: ${outName}`);
-      } catch (e) {
-        log(`오류: ${e?.message || e}`);
-        setStatus(`오류: ${e?.message || e}`);
-      } finally {
-        btnConvert.disabled = false;
-        btnCancel.disabled = true;
-      }
-    });
+      const result = await window.Tesseract.recognize(canvas, "kor+eng");
+      log("OCR 완료");
+      log(result.data.text.slice(0, 300));
+    };
   </script>
 </body>
 </html>
