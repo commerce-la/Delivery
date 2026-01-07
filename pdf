@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF → 운송장 엑셀 변환 (OCR)</title>
+
+  <!-- pdf.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
+
+  <!-- tesseract.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0f172a; color:#e5e7eb; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 40px; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0 0 16px; color:#cbd5f5; }
+    .card { background: rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.35); border-radius:16px; padding:18px; box-shadow:0 20px 40px rgba(0,0,0,.25); }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    input[type="file"] { background:#020617; border:1px solid rgba(148,163,184,.5); color:#e5e7eb; padding:10px; border-radius:12px; }
+    button { background:#2563eb; color:#fff; border:0; border-radius:999px; padding:10px 18px; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .status { margin-top:12px; font-size:13px; color:#a5b4fc; min-height:18px; white-space:pre-wrap; }
+    .small { font-size:12px; color:#9ca3af; margin-top:10px; line-height:1.45; }
+    .log { margin-top:14px; padding:12px; background:#020617; border:1px solid rgba(148,163,184,.25); border-radius:12px; max-height:240px; overflow:auto; font-size:12px; color:#e5e7eb; }
+    .pill { display:inline-block; padding:2px 10px; border-radius:999px; background:rgba(37,99,235,.2); border:1px solid rgba(37,99,235,.35); font-size:12px; color:#cbd5f5; }
+    .hint { margin-top:10px; font-size:12px; color:#9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PDF → 운송장(waybill) 엑셀 변환 (OCR)</h1>
+    <p>PDF를 선택하면 브라우저에서 OCR로 읽고, 운송장 엑셀(.xlsx)을 생성합니다.</p>
+
+    <div class="card">
+      <div class="row">
+        <input id="pdfFile" type="file" accept="application/pdf" />
+        <button id="btnConvert" disabled>변환 실행 (엑셀 다운로드)</button>
+        <span class="pill" id="pageInfo">페이지: -</span>
+      </div>
+
+      <div class="status" id="status"></div>
+
+      <div class="hint">
+        • OCR 언어: <b>kor+eng</b><br>
+        • “라벨(수취인명/통합배송지/연락처 등)”이 PDF마다 다르면, 아래 코드의 정규식 패턴만 추가하면 됩니다.
+      </div>
+
+      <div class="log" id="log"></div>
+
+      <div class="small">
+        <b>출력 컬럼</b>: 받는분성명, 받는분주소(전체, 분할), 받는분전화번호, 받는분기타연락처, 품목명, 수량<br>
+        (원하면 컬럼을 더 추가해 확장 가능)
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // pdf.js worker 설정
+    // (CDN 경로는 버전에 따라 바뀔 수 있으니 필요하면 고정 버전으로 유지)
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js";
+
+    const $ = (id) => document.getElementById(id);
+    const pdfFile = $("pdfFile");
+    const btnConvert = $("btnConvert");
+    const statusEl = $("status");
+    const logEl = $("log");
+    const pageInfoEl = $("pageInfo");
+
+    const WAYBILL_COLUMNS = [
+      "받는분성명",
+      "받는분주소(전체, 분할)",
+      "받는분전화번호",
+      "받는분기타연락처",
+      "품목명",
+      "수량",
+    ];
+
+    function log(msg) {
+      const time = new Date().toLocaleTimeString();
+      logEl.textContent += `[${time}] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function clean(s) {
+      return (s ?? "").toString().replace(/\s+/g, " ").trim();
+    }
+
+    function normalizePhone(s) {
+      return clean(s).replace(/[^0-9\-]/g, "");
+    }
+
+    // =========================
+    // 필드 추출 정규식 (필요시 추가/수정)
+    // =========================
+    const PATTERNS = {
+      name: [
+        /(수취인명|수령자명|받는분\s*성명)\s*[:：]?\s*(.+)/i,
+        /(수취인|수령자)\s*[:：]?\s*(.+)/i,
+      ],
+      addr: [
+        /(통합배송지|수령자\s*주소|받는분\s*주소)\s*[:：]?\s*(.+)/i,
+        /(배송지|주소)\s*[:：]?\s*(.+)/i,
+      ],
+      phone1: [
+        /(수취인연락처1|수령자\s*전화번호|받는분\s*전화번호|연락처1)\s*[:：]?\s*(.+)/i,
+        /(전화번호|전화)\s*[:：]?\s*(.+)/i,
+      ],
+      phone2: [
+        /(수취인연락처2|수령자\s*휴대전화|받는분\s*기타연락처|휴대전화|연락처2)\s*[:：]?\s*(.+)/i,
+        /(휴대폰|핸드폰|모바일)\s*[:：]?\s*(.+)/i,
+      ],
+      item: [
+        /(상품명|품목명|주문상품|상품)\s*[:：]?\s*(.+)/i,
+      ],
+      qty: [
+        /(수량|주문수량|수량\(EA\))\s*[:：]?\s*([0-9]+)\b/i,
+        /\b([0-9]+)\s*(EA|ea|개)\b/,
+      ],
+    };
+
+    function firstMatch(lines, patterns) {
+      for (const ln of lines) {
+        for (const re of patterns) {
+          const m = ln.match(re);
+          if (m) {
+            // 보통 마지막 그룹이 값
+            const val = clean(m[m.length - 1]);
+            if (val) return val;
+          }
+        }
+      }
+      return "";
+    }
+
+    // OCR 텍스트에서 운송장 1행 추출
+    function extractWaybill(lines) {
+      const name = firstMatch(lines, PATTERNS.name);
+      const addr = firstMatch(lines, PATTERNS.addr);
+      const p1 = normalizePhone(firstMatch(lines, PATTERNS.phone1));
+      const p2 = normalizePhone(firstMatch(lines, PATTERNS.phone2));
+      const item = firstMatch(lines, PATTERNS.item);
+      const qtyRaw = firstMatch(lines, PATTERNS.qty);
+      const qtyMatch = (qtyRaw.match(/\d+/) || [])[0] || "";
+
+      const row = {
+        "받는분성명": name,
+        "받는분주소(전체, 분할)": addr,
+        "받는분전화번호": p1 || p2 || "",
+        "받는분기타연락처": p2,
+        "품목명": item,
+        "수량": qtyMatch,
+      };
+
+      return row;
+    }
+
+    // PDF 한 페이지를 캔버스로 렌더링
+    async function renderPageToCanvas(pdf, pageNo, scale = 2.0) {
+      const page = await pdf.getPage(pageNo);
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas;
+    }
+
+    // 캔버스 OCR
+    async function ocrCanvas(canvas) {
+      const { data: { text } } = await Tesseract.recognize(
+        canvas,
+        "kor+eng",
+        {
+          logger: (m) => {
+            // 진행률 표시
+            if (m.status && typeof m.progress === "number") {
+              setStatus(`OCR 진행: ${m.status} (${Math.round(m.progress * 100)}%)`);
+            }
+          }
+        }
+      );
+      return text || "";
+    }
+
+    // =========================
+    // UI 이벤트
+    // =========================
+    pdfFile.addEventListener("change", () => {
+      logEl.textContent = "";
+      setStatus("");
+      const file = pdfFile.files?.[0];
+      btnConvert.disabled = !file;
+      pageInfoEl.textContent = "페이지: -";
+      if (file) log(`PDF 선택됨: ${file.name} (${Math.round(file.size/1024)} KB)`);
+    });
+
+    btnConvert.addEventListener("click", async () => {
+      const file = pdfFile.files?.[0];
+      if (!file) return;
+
+      btnConvert.disabled = true;
+      logEl.textContent = "";
+      setStatus("PDF 로딩 중...");
+      log("PDF 로딩 시작");
+
+      try {
+        // PDF 로드
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        pageInfoEl.textContent = `페이지: ${pdf.numPages}`;
+        log(`페이지 수: ${pdf.numPages}`);
+
+        // 페이지별 OCR 텍스트 수집
+        const allLines = [];
+        for (let p = 1; p <= pdf.numPages; p++) {
+          setStatus(`페이지 ${p}/${pdf.numPages} 렌더링 중...`);
+          log(`페이지 ${p} 렌더링`);
+          const canvas = await renderPageToCanvas(pdf, p, 2.2);
+
+          setStatus(`페이지 ${p}/${pdf.numPages} OCR 중...`);
+          log(`페이지 ${p} OCR 시작`);
+          const text = await ocrCanvas(canvas);
+
+          const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          log(`페이지 ${p} OCR 라인: ${lines.length}개`);
+          allLines.push(...lines);
+        }
+
+        // 필드 추출 (현재는 1건(1행) 생성)
+        setStatus("필드 추출 중...");
+        log("필드 추출 시작");
+        const row = extractWaybill(allLines);
+
+        log("추출 결과:");
+        log(JSON.stringify(row, null, 2));
+
+        // 엑셀 생성
+        setStatus("엑셀 생성 중...");
+        const ws = XLSX.utils.json_to_sheet([row], { header: WAYBILL_COLUMNS });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "waybill");
+
+        // 저장
+        const outName = file.name.replace(/\.pdf$/i, "") + "_waybill.xlsx";
+        XLSX.writeFile(wb, outName, { compression: true });
+
+        setStatus("완료! 엑셀 다운로드가 시작되었습니다.");
+        log(`완료: ${outName}`);
+      } catch (err) {
+        console.error(err);
+        setStatus("오류가 발생했습니다. 콘솔/로그를 확인하세요.");
+        log(`오류: ${err?.message || err}`);
+      } finally {
+        btnConvert.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
