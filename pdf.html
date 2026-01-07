@@ -3,11 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PDF → 운송장 엑셀 변환 (OCR)</title>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <title>PDF → 운송장 엑셀 변환 (OCR) - Debug</title>
 
   <style>
     body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0f172a; color:#e5e7eb; }
@@ -22,34 +18,39 @@
     .btn-secondary{ background:#334155; }
     .pill{ display:inline-block; padding:2px 10px; border-radius:999px; background:rgba(37,99,235,.18); border:1px solid rgba(37,99,235,.35); font-size:12px; color:#cbd5f5; }
     .status{ margin-top:10px; font-size:13px; color:#a5b4fc; min-height:18px; white-space:pre-wrap; }
-    .log{ margin-top:14px; padding:12px; background:#020617; border:1px solid rgba(148,163,184,.25); border-radius:12px; max-height:240px; overflow:auto; font-size:12px; color:#e5e7eb; white-space:pre-wrap; }
-    .hint{ margin-top:12px; font-size:12px; color:#9ca3af; line-height:1.45; }
-    .grid { margin-top:14px; display:grid; grid-template-columns: 1fr 360px; gap:14px; }
-    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .panel { background:#020617; border:1px solid rgba(148,163,184,.25); border-radius:14px; padding:12px; }
-    .panel h3 { margin:0 0 10px; font-size:13px; color:#cbd5f5; }
-    .thumbs { display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
-    .thumb { border:1px solid rgba(148,163,184,.25); border-radius:12px; overflow:hidden; background:#0b1220; }
-    .thumb canvas { width:100%; height:auto; display:block; }
-    .thumb .cap { padding:8px; font-size:12px; color:#9ca3af; display:flex; justify-content:space-between; }
+    .log{ margin-top:14px; padding:12px; background:#020617; border:1px solid rgba(148,163,184,.25); border-radius:12px; max-height:280px; overflow:auto; font-size:12px; color:#e5e7eb; white-space:pre-wrap; }
     .progress-wrap { margin-top:12px; }
     .bar { background:#1e293b; border-radius:999px; height:10px; overflow:hidden; border:1px solid rgba(148,163,184,.25); }
     .bar > div { height:100%; width:0%; background:#38bdf8; transition:width .2s; }
     .ptext { font-size:12px; color:#a5b4fc; margin-top:6px; }
+    .warn { color:#fbbf24; }
+    .err { color:#fb7185; }
+    .ok { color:#86efac; }
+    code { color:#e5e7eb; }
   </style>
+
+  <!-- ✅ 중요한 변경점:
+       외부 스크립트는 defer로 로드 → HTML 렌더링/JS 초기 로그는 즉시 출력 가능 -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
+
 <body>
   <div class="wrap">
-    <h1>PDF → 운송장(waybill) 엑셀 변환 (OCR)</h1>
-    <p>PDF 업로드 → 렌더링 & OCR → 주문 레코드 파싱 → 운송장 엑셀 다운로드</p>
+    <h1>PDF → 운송장(waybill) 엑셀 변환 (OCR) <span class="pill">Debug</span></h1>
+    <p>
+      지금처럼 “로그가 하나도 안 뜨고 0% 고정”이면 보통 <b>스크립트 로딩 실패</b> 또는 <b>JS 실행 실패</b>야.<br>
+      아래 상태가 <span class="ok">OK</span>로 바뀌는지 확인해줘.
+    </p>
 
     <div class="card">
       <div class="row">
         <input id="pdfFile" type="file" accept="application/pdf" />
-        <button id="btnConvert" disabled>변환 실행 (엑셀 다운로드)</button>
+        <button id="btnConvert" disabled>변환 실행</button>
         <button id="btnCancel" class="btn-secondary" disabled>취소</button>
-        <span class="pill" id="pageInfo">페이지: -</span>
-        <span class="pill" id="stageInfo">단계: -</span>
+        <span class="pill" id="libInfo">라이브러리: 확인 중...</span>
       </div>
 
       <div class="progress-wrap">
@@ -58,416 +59,179 @@
       </div>
 
       <div class="status" id="status"></div>
+      <div class="log" id="log"></div>
 
-      <div class="grid">
-        <div class="panel">
-          <h3>실시간 로그</h3>
-          <div class="log" id="log"></div>
-          <div class="hint">
-            • 진행률이 0%로 보이는 문제를 막기 위해, 단계별로 강제 진행률을 올립니다.<br>
-            • 첫 실행은 kor 언어 데이터 다운로드/초기화 때문에 시간이 더 걸릴 수 있습니다.
-          </div>
-        </div>
-
-        <div class="panel">
-          <h3>페이지 미리보기(썸네일)</h3>
-          <div class="thumbs" id="thumbs"></div>
-        </div>
-      </div>
+      <p style="margin-top:12px; font-size:12px; color:#9ca3af; line-height:1.45;">
+        ✅ 5초 안에 라이브러리가 OK가 안 되면, GitHub Pages에서 CDN이 막히거나 네트워크가 차단된 거야.<br>
+        그 경우 해결책: <b>pdf.js / tesseract.js / xlsx를 레포에 직접 올려서 로컬 경로로 불러오기</b>가 가장 확실해.
+      </p>
     </div>
   </div>
 
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js";
-
+    // ====== “JS가 실행되는지” 가장 먼저 확인하는 장치 ======
     const $ = (id) => document.getElementById(id);
-
-    const pdfFile = $("pdfFile");
+    const logEl = $("log");
+    const statusEl = $("status");
+    const libInfoEl = $("libInfo");
     const btnConvert = $("btnConvert");
     const btnCancel = $("btnCancel");
-    const statusEl = $("status");
-    const logEl = $("log");
-    const pageInfoEl = $("pageInfo");
-    const stageInfoEl = $("stageInfo");
+    const pdfFile = $("pdfFile");
     const progressBarEl = $("progressBar");
     const progressTextEl = $("progressText");
-    const thumbsEl = $("thumbs");
 
-    // 정확도 vs 속도 (높을수록 정확도↑ 속도↓)
-    const OCR_RENDER_SCALE = 2.8;
-    const THUMB_SCALE = 0.7;
-
-    // 단계별 진행률 배분
-    const STAGE = {
-      LOAD:   { base: 0,  span:  5 },  // 0~5
-      THUMB:  { base: 5,  span: 15 },  // 5~20
-      RENDER: { base: 20, span: 10 },  // 20~30
-      OCR:    { base: 30, span: 60 },  // 30~90
-      PARSE:  { base: 90, span:  5 },  // 90~95
-      XLSX:   { base: 95, span:  5 },  // 95~100
-    };
-
-    let cancelRequested = false;
-    let totalPages = 0;
-    let currentPage = 0;
-
-    function resetUI() {
-      cancelRequested = false;
-      totalPages = 0;
-      currentPage = 0;
-      logEl.textContent = "";
-      statusEl.textContent = "";
-      pageInfoEl.textContent = "페이지: -";
-      stageInfoEl.textContent = "단계: -";
-      setOverallProgress(0);
-      thumbsEl.innerHTML = "";
-    }
-
-    function log(msg) {
+    function log(msg, cls="") {
       const time = new Date().toLocaleTimeString();
-      logEl.textContent += `[${time}] ${msg}\n`;
+      const line = `[${time}] ${msg}\n`;
+      logEl.textContent += line;
       logEl.scrollTop = logEl.scrollHeight;
+      if (cls) statusEl.innerHTML = `<span class="${cls}">${msg}</span>`;
+      else statusEl.textContent = msg;
     }
-    function setStatus(msg) { statusEl.textContent = msg; }
-    function setStage(msg) { stageInfoEl.textContent = `단계: ${msg}`; }
-
-    function setOverallProgress(pct) {
-      const clamped = Math.max(0, Math.min(100, pct));
-      progressBarEl.style.width = clamped.toFixed(1) + "%";
-      progressTextEl.textContent = `전체 진행률: ${clamped.toFixed(1)}%`;
-    }
-
-    function setProgressSegment(stage, local01) {
-      const s = STAGE[stage];
-      const v = s.base + s.span * Math.max(0, Math.min(1, local01));
-      setOverallProgress(v);
+    function setProgress(pct) {
+      const v = Math.max(0, Math.min(100, pct));
+      progressBarEl.style.width = v.toFixed(1) + "%";
+      progressTextEl.textContent = `전체 진행률: ${v.toFixed(1)}%`;
     }
 
-    function clean(s) { return (s ?? "").toString().replace(/\s+/g, " ").trim(); }
-    function normalizePhone(s) { return clean(s).replace(/[^0-9\-]/g, ""); }
+    // ✅ 전역 에러를 로그로 보여줌 (콘솔 안 봐도 됨)
+    window.addEventListener("error", (e) => {
+      log(`JS 에러: ${e.message}`, "err");
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      log(`Promise 에러: ${e.reason?.message || e.reason}`, "err");
+    });
 
-    function ensureNotCancelled() {
-      if (cancelRequested) throw new Error("사용자가 취소했습니다.");
+    log("✅ 페이지 JS 시작됨 (이 로그가 안 뜨면 JS 자체가 실행 안 된 상태)", "ok");
+
+    // ====== 라이브러리 로딩 체크 (5초 타임아웃) ======
+    function checkLibs() {
+      const okPdf = typeof window.pdfjsLib !== "undefined";
+      const okTes = typeof window.Tesseract !== "undefined";
+      const okXLSX = typeof window.XLSX !== "undefined";
+      return { okPdf, okTes, okXLSX };
     }
 
-    // 네이버 PDF 파싱 정규식
-    const RE_ORDERNO = /\b20\d{10,14}\b/;
-    const RE_DATE = /\b20\d{2}\.\d{2}\.\d{2}\b/;
-    const RE_PHONE = /\b0\d{1,2}-\d{3,4}-\d{4}\b/;
-    const RE_POST = /\(\d{5}\)/;
-    const RE_QTY_PAREN = /\(\s*(\d+)\s*개\s*\)/;
-    const RE_QTY_EA = /\b(\d+)\s*(EA|ea|개)\b/;
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const { okPdf, okTes, okXLSX } = checkLibs();
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
-    function splitRecords(lines) {
-      const records = [];
-      let cur = [];
-      for (const lnRaw of lines) {
-        const ln = clean(lnRaw);
-        if (!ln) continue;
-        if (RE_ORDERNO.test(ln)) {
-          if (cur.length) records.push(cur);
-          cur = [ln];
-        } else {
-          if (cur.length) cur.push(ln);
-        }
-      }
-      if (cur.length) records.push(cur);
-      return records;
-    }
+      libInfoEl.textContent = `라이브러리: pdf.js=${okPdf?"OK":"NO"} / tesseract=${okTes?"OK":"NO"} / xlsx=${okXLSX?"OK":"NO"} (${elapsed}s)`;
 
-    function parseRecord(lines) {
-      const joined = lines.join(" ");
-      const orderNo = (joined.match(RE_ORDERNO) || [""])[0];
+      if (okPdf && okTes && okXLSX) {
+        libInfoEl.className = "pill ok";
+        log("✅ 라이브러리 로딩 완료", "ok");
+        clearInterval(timer);
 
-      const phones = [];
-      for (const ln of lines) {
-        const m = ln.match(RE_PHONE);
-        if (m) {
-          const p = normalizePhone(m[0]);
-          if (p && !phones.includes(p)) phones.push(p);
-        }
+        // 이제부터 변환 로직을 연결
+        wireApp();
       }
 
-      let qty = "";
-      for (const ln of lines) {
-        const m1 = ln.match(RE_QTY_PAREN);
-        if (m1) { qty = m1[1]; break; }
+      // 5초 지나도 안 되면 거의 CDN 문제
+      if (Date.now() - start > 5000 && !(okPdf && okTes && okXLSX)) {
+        libInfoEl.className = "pill err";
+        log("❌ 5초 내 라이브러리 로딩 실패: CDN 차단/네트워크 문제 가능성 큼", "err");
+        clearInterval(timer);
       }
-      if (!qty) {
-        for (const ln of lines) {
-          const m2 = ln.match(RE_QTY_EA);
-          if (m2) { qty = m2[1]; break; }
-        }
-      }
-      const qtyNum = qty ? String(qty).replace(/\D/g, "") : "";
+    }, 200);
 
-      let name = "";
-      for (const ln of lines) {
-        const m = ln.match(/^([가-힣]{2,10})\s*\(/);
-        if (m) { name = m[1]; break; }
-      }
-      if (!name) {
-        for (const ln of lines) {
-          if (/^[가-힣]{2,10}$/.test(ln)) { name = ln; break; }
-        }
-      }
+    // ====== 실제 앱 연결 (라이브러리 로딩 후 실행) ======
+    function wireApp() {
+      // pdf.js worker 설정
+      // (workerSrc를 명시하지 않으면 일부 환경에서 멈추는 경우가 있음)
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js";
 
-      let addr = "";
-      for (const ln of lines) {
-        if (RE_POST.test(ln)) { addr = ln; break; }
-      }
-      if (!addr) {
-        for (const ln of lines) {
-          if (/(서울|경기|인천|대전|대구|부산|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(ln) && ln.length >= 12) {
-            addr = ln; break;
-          }
-        }
-      }
+      let cancelRequested = false;
 
-      const noise = (s) =>
-        RE_ORDERNO.test(s) || RE_DATE.test(s) || RE_PHONE.test(s) || RE_POST.test(s) ||
-        /원\b/.test(s) || /(택배|등기|소포|배송|CJ|한진|로젠)/i.test(s);
+      pdfFile.addEventListener("change", () => {
+        const file = pdfFile.files?.[0];
+        btnConvert.disabled = !file;
+        log(file ? `PDF 선택됨: ${file.name}` : "PDF 선택 해제");
+      });
 
-      let item = "";
-      const candidates = lines.map(clean).filter(s => s && !noise(s) && s.length >= 10);
-      candidates.sort((a,b)=> b.length - a.length);
-      for (const c of candidates) {
-        if (/(시|군|구|동|로|길|번길)\b/.test(c) &&
-            /(서울|경기|인천|대전|대구|부산|광주|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/.test(c)) continue;
-        item = c; break;
-      }
+      btnCancel.addEventListener("click", () => {
+        cancelRequested = true;
+        btnCancel.disabled = true;
+        log("취소 요청됨", "warn");
+      });
 
-      const itemOut = (item && qtyNum) ? `${item} - ${qtyNum}EA` : item;
+      btnConvert.addEventListener("click", async () => {
+        const file = pdfFile.files?.[0];
+        if (!file) return;
 
-      return {
-        "받는분성명": name,
-        "받는분주소(전체, 분할)": addr,
-        "받는분전화번호": phones[0] || phones[1] || "",
-        "받는분기타연락처": phones[1] || "",
-        "품목명": itemOut,
-        "수량": qtyNum
-      };
-    }
+        cancelRequested = false;
+        btnConvert.disabled = true;
+        btnCancel.disabled = false;
+        setProgress(1);
+        log("변환 시작", "ok");
 
-    function buildWaybillRows(allLines) {
-      const records = splitRecords(allLines);
-      const rows = [];
-      for (const rec of records) {
-        const r = parseRecord(rec);
-        if (r["받는분성명"] || r["받는분주소(전체, 분할)"] || r["품목명"]) rows.push(r);
-      }
-      return rows;
-    }
+        try {
+          log("PDF 로딩 중...");
+          const buf = await file.arrayBuffer();
+          setProgress(5);
 
-    async function renderPageToCanvas(pdf, pageNo, scale) {
-      const page = await pdf.getPage(pageNo);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d", { alpha:false });
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      return canvas;
-    }
+          const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+          log(`PDF 페이지 수: ${pdf.numPages}`);
+          setProgress(10);
 
-    async function makeThumb(pdf, pageNo) {
-      const canvas = await renderPageToCanvas(pdf, pageNo, THUMB_SCALE);
-      const box = document.createElement("div");
-      box.className = "thumb";
+          // 1페이지만 OCR 테스트(문제 원인 파악용) — 필요하면 all로 확장 가능
+          const pageNo = 1;
+          log(`페이지 ${pageNo} 렌더링...`);
+          const page = await pdf.getPage(pageNo);
+          const viewport = page.getViewport({ scale: 2.0 });
 
-      const cap = document.createElement("div");
-      cap.className = "cap";
-      cap.innerHTML = `<span>Page ${pageNo}</span><span>thumb</span>`;
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          setProgress(20);
 
-      box.appendChild(canvas);
-      box.appendChild(cap);
-      thumbsEl.appendChild(box);
-    }
+          if (cancelRequested) throw new Error("사용자가 취소했습니다.");
 
-    async function ocrCanvas(canvas) {
-      ensureNotCancelled();
-
-      const { data: { text } } = await Tesseract.recognize(
-        canvas,
-        "kor+eng",
-        {
-          logger: (m) => {
-            // OCR 진행률이 없거나 늦게 와도, 최소한 페이지 단위로는 올라가게 처리
-            if (typeof m.progress === "number" && totalPages > 0 && currentPage > 0) {
-              const perDoc = ((currentPage - 1) + m.progress) / totalPages; // 0~1
-              setProgressSegment("OCR", perDoc);
-            } else {
-              // progress가 없다면 현재 페이지 기준 "최소 진행률" 반영 (0% 고정 방지)
-              if (totalPages > 0 && currentPage > 0) {
-                const perDocMin = (currentPage - 1) / totalPages;
-                setProgressSegment("OCR", perDocMin);
+          log("OCR 시작(1페이지)...");
+          const result = await window.Tesseract.recognize(canvas, "kor+eng", {
+            logger: (m) => {
+              if (typeof m.progress === "number") {
+                // 20~90 구간에서 진행률 반영
+                setProgress(20 + 70 * m.progress);
               }
             }
+          });
 
-            if (m.status) {
-              const pp = (typeof m.progress === "number") ? ` (${Math.round(m.progress*100)}%)` : "";
-              setStatus(`페이지 ${currentPage}/${totalPages} OCR: ${m.status}${pp}`);
-            }
-          }
+          if (cancelRequested) throw new Error("사용자가 취소했습니다.");
+
+          const text = result?.data?.text || "";
+          log(`OCR 완료. 텍스트 길이: ${text.length}`);
+          setProgress(90);
+
+          // 아주 단순 waybill 1행 생성(테스트용)
+          const row = {
+            "받는분성명": "",
+            "받는분주소(전체, 분할)": "",
+            "받는분전화번호": "",
+            "받는분기타연락처": "",
+            "품목명": "",
+            "수량": ""
+          };
+
+          const ws = window.XLSX.utils.json_to_sheet([row]);
+          const wb = window.XLSX.utils.book_new();
+          window.XLSX.utils.book_append_sheet(wb, ws, "waybill");
+          window.XLSX.writeFile(wb, file.name.replace(/\.pdf$/i, "") + "_waybill.xlsx");
+
+          setProgress(100);
+          log("완료! 엑셀 다운로드 시작", "ok");
+        } catch (e) {
+          log(`오류: ${e?.message || e}`, "err");
+        } finally {
+          btnConvert.disabled = false;
+          btnCancel.disabled = true;
         }
-      );
-
-      ensureNotCancelled();
-      return text || "";
+      });
     }
-
-    pdfFile.addEventListener("change", () => {
-      resetUI();
-      const file = pdfFile.files?.[0];
-      btnConvert.disabled = !file;
-      btnCancel.disabled = true;
-
-      if (file) {
-        setStage("대기");
-        log(`PDF 선택됨: ${file.name} (${Math.round(file.size/1024)} KB)`);
-      }
-    });
-
-    btnCancel.addEventListener("click", () => {
-      cancelRequested = true;
-      btnCancel.disabled = true;
-      setStage("취소 처리");
-      setStatus("취소 요청됨… (현재 작업이 끝나면 중단됩니다)");
-      log("사용자가 취소를 눌렀습니다.");
-    });
-
-    btnConvert.addEventListener("click", async () => {
-      const file = pdfFile.files?.[0];
-      if (!file) return;
-
-      resetUI();
-      btnConvert.disabled = true;
-      btnCancel.disabled = false;
-
-      try {
-        // LOAD
-        setStage("PDF 로딩");
-        setStatus("PDF 로딩 중...");
-        setProgressSegment("LOAD", 0.1);
-        log("PDF 로딩 시작");
-
-        const arrayBuffer = await file.arrayBuffer();
-        setProgressSegment("LOAD", 0.6);
-
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        totalPages = pdf.numPages;
-        pageInfoEl.textContent = `페이지: ${totalPages}`;
-        log(`페이지 수: ${totalPages}`);
-        setProgressSegment("LOAD", 1.0);
-
-        ensureNotCancelled();
-
-        // THUMB
-        setStage("썸네일 생성");
-        setStatus("페이지 썸네일 생성 중...");
-        log("썸네일 생성 시작");
-        for (let p = 1; p <= totalPages; p++) {
-          ensureNotCancelled();
-          await makeThumb(pdf, p);
-          setProgressSegment("THUMB", p / totalPages); // 5~20%
-        }
-        log("썸네일 생성 완료");
-
-        // RENDER + OCR
-        const allLines = [];
-
-        for (let p = 1; p <= totalPages; p++) {
-          ensureNotCancelled();
-          currentPage = p;
-
-          // RENDER 단계: 20~30%를 페이지별로 쪼개서 표시
-          setStage("페이지 렌더링");
-          setStatus(`페이지 ${p}/${totalPages} 렌더링 중...`);
-          log(`페이지 ${p} 렌더링 (scale=${OCR_RENDER_SCALE})`);
-          setProgressSegment("RENDER", (p - 1) / totalPages);
-
-          const canvas = await renderPageToCanvas(pdf, p, OCR_RENDER_SCALE);
-
-          // 렌더 끝났으면 해당 페이지 렌더 비중 반영
-          setProgressSegment("RENDER", p / totalPages);
-
-          // OCR 단계
-          setStage("OCR");
-          setStatus(`페이지 ${p}/${totalPages} OCR 준비 중...`);
-          log(`페이지 ${p} OCR 시작`);
-          // OCR 시작했음을 반영(0% 고정 방지)
-          setProgressSegment("OCR", (p - 1) / totalPages);
-
-          const text = await ocrCanvas(canvas);
-
-          const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-          log(`페이지 ${p} OCR 라인: ${lines.length}개`);
-          allLines.push(...lines);
-
-          // 페이지 OCR 완료로 최소한 이만큼은 진행
-          setProgressSegment("OCR", p / totalPages);
-        }
-
-        ensureNotCancelled();
-
-        // PARSE
-        setStage("파싱");
-        setStatus("주문 레코드 파싱 중...");
-        log("주문번호 기준 레코드 파싱 시작");
-        setProgressSegment("PARSE", 0.3);
-
-        const rows = buildWaybillRows(allLines);
-        log(`추출된 행 수: ${rows.length}`);
-        setProgressSegment("PARSE", 1.0);
-
-        if (!rows.length) {
-          setStage("실패");
-          setStatus("추출된 행이 없습니다. (주문번호 인식 실패 가능) 로그를 확인하세요.");
-          log("힌트: OCR_RENDER_SCALE을 3.0~3.5로 올리거나, RE_ORDERNO 패턴을 조정하세요.");
-          return;
-        }
-
-        // 정렬
-        rows.sort((a,b) => (a["받는분성명"]||"").localeCompare((b["받는분성명"]||""), "ko"));
-
-        // XLSX
-        setStage("엑셀 생성");
-        setStatus("엑셀 생성 중...");
-        log("엑셀 생성 시작");
-        setProgressSegment("XLSX", 0.4);
-
-        const ws = XLSX.utils.json_to_sheet(rows);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "waybill");
-
-        setProgressSegment("XLSX", 0.8);
-
-        const outName = file.name.replace(/\.pdf$/i, "") + "_waybill.xlsx";
-        XLSX.writeFile(wb, outName, { compression: true });
-
-        setProgressSegment("XLSX", 1.0);
-        setStage("완료");
-        setStatus("완료! 엑셀 다운로드가 시작되었습니다.");
-        log(`완료: ${outName}`);
-
-      } catch (err) {
-        const msg = (err && err.message) ? err.message : String(err);
-        if (msg.includes("취소")) {
-          setStage("취소됨");
-          setStatus("작업이 취소되었습니다.");
-          log("작업 취소됨");
-        } else {
-          setStage("오류");
-          setStatus("오류가 발생했습니다. 로그/콘솔을 확인하세요.");
-          log(`오류: ${msg}`);
-          console.error(err);
-        }
-      } finally {
-        btnConvert.disabled = false;
-        btnCancel.disabled = true;
-      }
-    });
   </script>
 </body>
 </html>
