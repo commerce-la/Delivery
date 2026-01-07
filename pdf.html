@@ -10,14 +10,15 @@
 
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
-    .log { white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; height: 200px; overflow: auto; }
+    .log { white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; height: 240px; overflow: auto; }
+    button { padding: 8px 14px; }
   </style>
 </head>
 
 <body>
   <h2>라이브러리 로드 테스트</h2>
   <input type="file" id="pdfFile" accept="application/pdf">
-  <button id="btnTest">OCR 테스트</button>
+  <button id="btnTest" disabled>OCR 테스트</button>
 
   <div class="log" id="log"></div>
 
@@ -35,12 +36,45 @@
 
     function log(msg) {
       logEl.textContent += msg + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // ✅ 모든 defer 스크립트까지 실행된 뒤 시작
+    await new Promise((r) => window.addEventListener("load", r, { once: true }));
+
+    // 1) 우선 전역에 올라왔는지 확인
+    let TesseractRef = window.Tesseract;
+
+    // 2) 전역이 없으면: tesseract.js가 ESM일 수 있으니 module import 시도
+    if (!TesseractRef) {
+      try {
+        const mod = await import("./libs/tesseract/tesseract.js");
+        // 가능한 형태들 대응
+        TesseractRef = mod?.default || mod?.Tesseract || mod;
+        // 전역도 잡아주기
+        if (TesseractRef && !window.Tesseract) window.Tesseract = TesseractRef;
+        log("tesseract.js를 ESM import로 로드 시도: 성공");
+      } catch (e) {
+        log("tesseract.js ESM import 실패: " + (e?.message || e));
+      }
     }
 
     // 라이브러리 확인
     log("pdfjsLib: " + (pdfjsLib ? "OK" : "FAIL"));
     log("Tesseract: " + (window.Tesseract ? "OK" : "FAIL"));
     log("XLSX: " + (window.XLSX ? "OK" : "FAIL"));
+
+    // FAIL이면 가장 흔한 원인 안내
+    if (!window.Tesseract) {
+      log("");
+      log("※ Tesseract가 FAIL이면 보통 아래 중 하나입니다:");
+      log("1) tesseract.js 파일이 '브라우저 번들(UMD)'이 아니라 ESM/Node용 파일");
+      log("2) 파일이 실행 중 오류(콘솔에 'Unexpected token export' 같은 에러)");
+      log("해결: tesseract.min.js(브라우저용)로 교체 추천");
+      return;
+    }
+
+    btn.disabled = false;
 
     btn.onclick = async () => {
       if (!input.files[0]) {
@@ -59,15 +93,20 @@
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
 
       await page.render({ canvasContext: ctx, viewport }).promise;
       log("OCR 시작...");
 
-      const result = await window.Tesseract.recognize(canvas, "kor+eng");
+      const result = await window.Tesseract.recognize(canvas, "kor+eng", {
+        logger: (m) => {
+          if (m?.status) log(`OCR: ${m.status} ${m.progress != null ? Math.round(m.progress*100)+'%' : ''}`);
+        }
+      });
+
       log("OCR 완료");
-      log(result.data.text.slice(0, 300));
+      log((result.data.text || "").slice(0, 500));
     };
   </script>
 </body>
