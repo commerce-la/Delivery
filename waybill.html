@@ -16,23 +16,13 @@
       color: #e5e7eb;
       line-height: 1.5;
     }
-
     main {
       max-width: 1040px;
       margin: 0 auto;
       padding: 24px 16px 40px;
     }
-
-    .title {
-      font-size: 18px;
-      margin: 0 0 8px;
-    }
-
-    .subtitle {
-      font-size: 13px;
-      color: #9ca3af;
-      margin-bottom: 18px;
-    }
+    .title { font-size: 18px; margin: 0 0 8px; }
+    .subtitle { font-size: 13px; color: #9ca3af; margin-bottom: 18px; }
 
     .card {
       background: rgba(15, 23, 42, 0.9);
@@ -42,28 +32,11 @@
       box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
       margin-bottom: 24px;
     }
+    .card h2 { margin-top: 0; font-size: 20px; margin-bottom: 8px; }
+    .card p { margin-top: 0; margin-bottom: 16px; color: #cbd5f5; font-size: 14px; }
 
-    .card h2 {
-      margin-top: 0;
-      font-size: 20px;
-      margin-bottom: 8px;
-    }
-
-    .card p {
-      margin-top: 0;
-      margin-bottom: 16px;
-      color: #cbd5f5;
-      font-size: 14px;
-    }
-
-    .file-input {
-      margin: 8px 0 16px;
-    }
-
-    input[type="file"],
-    select {
-      font-size: 14px;
-    }
+    .file-input { margin: 8px 0 16px; }
+    input[type="file"], select { font-size: 14px; }
 
     button {
       margin-top: 16px;
@@ -75,11 +48,7 @@
       background: #2563eb;
       color: #f9fafb;
     }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .status {
       margin-top: 8px;
@@ -104,40 +73,22 @@
       font-size: 12px;
       background: rgba(15, 23, 42, 0.9);
     }
-
     th, td {
       border: 1px solid rgba(148, 163, 184, 0.6);
       padding: 4px 6px;
       white-space: nowrap;
     }
+    th { background: rgba(37, 99, 235, 0.3); }
 
-    th {
-      background: rgba(37, 99, 235, 0.3);
-    }
-
-    .mapping {
-      margin-top: 16px;
-      font-size: 13px;
-    }
-
+    .mapping { margin-top: 16px; font-size: 13px; }
     .mapping-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 10px 16px;
       margin-top: 12px;
     }
-
-    .mapping-item {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .mapping-item label {
-      font-size: 12px;
-      color: #e5e7eb;
-    }
-
+    .mapping-item { display: flex; flex-direction: column; gap: 4px; }
+    .mapping-item label { font-size: 12px; color: #e5e7eb; }
     .mapping-item select {
       padding: 4px 6px;
       border-radius: 8px;
@@ -146,33 +97,16 @@
       color: #e5e7eb;
       font-size: 12px;
     }
+    .mapping-hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
 
-    .mapping-hint {
-      font-size: 12px;
-      color: #9ca3af;
-      margin-top: 4px;
-    }
-
-    .section-title {
-      font-size: 16px;
-      margin-top: 0;
-      margin-bottom: 8px;
-    }
-
-    .sub-status {
-      font-size: 12px;
-      color: #9ca3af;
-      margin-top: 4px;
-      min-height: 16px;
-    }
+    .section-title { font-size: 16px; margin-top: 0; margin-bottom: 8px; }
+    .sub-status { font-size: 12px; color: #9ca3af; margin-top: 4px; min-height: 16px; }
   </style>
 </head>
 <body>
   <main>
     <h1 class="title">운송장 변환</h1>
-    <p class="subtitle">
-      알파 / 네이버 / 오피스디포 전용 규칙을 사용하여 주문 엑셀을 택배사 waybill 형식으로 변환합니다.
-    </p>
+    <p class="subtitle">알파 / 네이버 / 오피스디포 전용 규칙을 사용하여 주문 엑셀을 waybill 형식으로 변환합니다.</p>
 
     <!-- 1. 업체명 선택 -->
     <div class="card">
@@ -188,18 +122,18 @@
           <option value="오피스디포">오피스디포</option>
         </select>
         <div class="mapping-hint">
-          * 알파 / 네이버 / 오피스디포 별 전용 규칙이 적용됩니다.
+          * 알파는 품목 파일이 필요합니다. 네이버/오피스디포는 수령자 컬럼 전용 매핑만 적용됩니다.
         </div>
       </div>
       <div class="status" id="status-vendor"></div>
     </div>
 
-    <!-- 2. 파일 업로드 (품목 파일 + 주문 파일) -->
+    <!-- 2. 파일 업로드 -->
     <div class="card">
       <h2>2. 품목 파일 & 주문 파일 업로드</h2>
       <p>
-        <strong>품목 파일</strong>에는 상품코드, 품목명, 입수, 상품분류1, 기본, 카톤, 운임 등의 상품 정보가 들어 있고,<br />
-        <strong>주문 파일</strong>에는 실제 출고할 주문 내역이 들어 있습니다.
+        <strong>품목 파일</strong>: 상품코드, 품목명, 입수, 상품분류1, 기본, 카톤, 운임 등<br />
+        <strong>주문 파일</strong>: 실제 주문 데이터
       </p>
 
       <h3 class="section-title">2-1. 품목 파일 업로드 (알파 상품 마스터)</h3>
@@ -219,18 +153,15 @@
       </div>
     </div>
 
-    <!-- 3. 미리보기 & 변환 실행 -->
+    <!-- 3. 변환 -->
     <div class="card">
       <h2>3. 미리보기 & 변환 실행</h2>
       <p>
-        주문 파일의 상위 몇 행을 미리 보여줍니다. 업체명/파일 업로드/매핑을 확인한 뒤,<br />
-        <strong>엑셀 변환하기</strong>를 누르면 waybill 형식으로 변환된 엑셀이 다운로드됩니다.
+        주문 파일 상위 일부 행을 미리 보여줍니다. 확인 후 <strong>엑셀 변환하기</strong>를 누르세요.
       </p>
 
       <button id="convert-btn" disabled>엑셀 변환하기 (waybill.xlsx)</button>
-
       <div class="status" id="status-convert"></div>
-
       <div class="preview" id="preview"></div>
     </div>
   </main>
@@ -250,8 +181,8 @@
     const mappingEl         = document.getElementById("mapping");
 
     let selectedVendor = "";
-    let itemRows  = [];   // 품목 파일
-    let orderRows = [];   // 주문 파일
+    let itemRows  = [];
+    let orderRows = [];
     let orderHeaders = [];
 
     const WAYBILL_FIELDS = [
@@ -275,11 +206,7 @@
 
     vendorSelect.addEventListener("change", (e) => {
       selectedVendor = e.target.value;
-      if (!selectedVendor) {
-        statusVendorEl.textContent = "업체명을 선택해 주세요.";
-      } else {
-        statusVendorEl.textContent = `선택된 업체: ${selectedVendor}`;
-      }
+      statusVendorEl.textContent = selectedVendor ? `선택된 업체: ${selectedVendor}` : "업체명을 선택해 주세요.";
       updateConvertButtonState();
     });
 
@@ -311,23 +238,16 @@
 
         for (const row of itemRows) {
           const code      = (row["상품코드"]   ?? "").toString().trim();
-          const itemName  = (row["품목명"]     ?? "").toString().trim();
-          const units     = row["입수"];
-          const cat1      = (row["상품분류1"]  ?? "").toString().trim();
-          const basicFare = row["기본"];
-          const carton    = row["카톤"];
-          const fareShip  = row["운임"];
-
           if (!code) continue;
 
           alphaGoodsByCode.set(code, {
             상품코드:   code,
-            품목명:     itemName,
-            입수:       units,
-            상품분류1:  cat1,
-            기본:       basicFare,
-            카톤:       carton,
-            운임:       fareShip
+            품목명:     (row["품목명"] ?? "").toString().trim(),
+            입수:       row["입수"],
+            상품분류1:  (row["상품분류1"] ?? "").toString().trim(),
+            기본:       row["기본"],
+            카톤:       row["카톤"],
+            운임:       row["운임"]
           });
         }
 
@@ -397,22 +317,16 @@
         statusConvertEl.textContent = "먼저 업체명을 선택해 주세요.";
         return;
       }
-
       if (!orderRows || orderRows.length === 0) {
         statusConvertEl.textContent = "먼저 주문 파일을 업로드해 주세요.";
         return;
       }
-
       if (selectedVendor === "알파" && !alphaGoodsLoaded) {
         statusConvertEl.textContent = "알파 품목 파일(상품 마스터)을 먼저 업로드해 주세요.";
         return;
       }
 
       const mapping = getMapping();
-      if (!mapping) {
-        statusConvertEl.textContent = "열 매핑을 읽어오는 중 문제가 발생했습니다.";
-        return;
-      }
 
       try {
         statusConvertEl.textContent = "규칙을 적용하는 중...";
@@ -429,6 +343,7 @@
           return nameA.localeCompare(nameB, "ko");
         });
 
+        // 내부 필드 제거 후 저장
         const cleanedRows = transformedRows.map(row => {
           const copy = { ...row };
           delete copy["_internal_qty"];
@@ -453,9 +368,7 @@
 
     function updateConvertButtonState() {
       let enable = !!selectedVendor && orderRows.length > 0;
-      if (selectedVendor === "알파") {
-        enable = enable && alphaGoodsLoaded;
-      }
+      if (selectedVendor === "알파") enable = enable && alphaGoodsLoaded;
       convertBtn.disabled = !enable;
     }
 
@@ -466,11 +379,7 @@
       }
 
       let html = "";
-      html += `<div class="mapping-hint">`;
-      html += `각 waybill 항목에 대해, 어떤 <strong>주문 파일의 열</strong>을 사용할지 선택하세요. `;
-      html += `선택하지 않은 항목은 빈 값으로 들어갑니다.`;
-      html += `</div>`;
-
+      html += `<div class="mapping-hint">각 waybill 항목에 대해 주문 파일의 열을 선택하세요. (선택 안 하면 빈 값)</div>`;
       html += `<div class="mapping-grid">`;
 
       for (const field of WAYBILL_FIELDS) {
@@ -478,13 +387,8 @@
         html += `<label for="map-${field.key}">waybill: ${field.key}</label>`;
         html += `<select id="map-${field.key}" data-field="${field.key}">`;
         html += `<option value="">(비워두기)</option>`;
-
-        for (const h of headers) {
-          html += `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`;
-        }
-
-        html += `</select>`;
-        html += `</div>`;
+        for (const h of headers) html += `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`;
+        html += `</select></div>`;
       }
 
       html += `</div>`;
@@ -495,9 +399,7 @@
       const mapping = {};
       for (const field of WAYBILL_FIELDS) {
         const select = document.querySelector(`select[data-field="${field.key}"]`);
-        if (!select) continue;
-        const value = select.value;
-        mapping[field.key] = value || null;
+        mapping[field.key] = select ? (select.value || null) : null;
       }
       return mapping;
     }
@@ -509,31 +411,35 @@
       return Number.isFinite(num) ? num : 0;
     }
 
-    // 🔹 메인 변환 로직
+    // ✅ 알파 주문시트에서 "상품코드(알파 상품코드)"를 다양한 후보 컬럼명에서 자동으로 찾기
+    function pickFirstExistingKey(row, candidates) {
+      for (const c of candidates) {
+        if (row && Object.prototype.hasOwnProperty.call(row, c)) return c;
+      }
+      return null;
+    }
+    function getAlphaProductCodeFromOrderRow(row) {
+      const candidates = ["상품코드", "알파상품코드", "알파 상품코드", "SKU", "sku", "상품SKU", "품목코드"];
+      const key = pickFirstExistingKey(row, candidates);
+      if (!key) return "";
+      return (row[key] ?? "").toString().trim();
+    }
+
+    // 🔹 변환 로직
     function applyRules(rows, mapping) {
       let workingRows = [...rows];
 
-      // 알파 전용 선처리: 발주처 & 수령자명 모두 "안성물류"면 주문량을 0으로
+      // 알파 전용: 발주처 & 수령자명이 "안성물류"면 주문량 0 처리
       if (selectedVendor === "알파") {
         workingRows = workingRows.map((row) => {
           const purchaser = (row["발주처"] ?? "").toString().trim();
           const receiver  = (row["수령자명"] ?? "").toString().trim();
-
-          if (purchaser === "안성물류" && receiver === "안성물류") {
-            return { ...row, 주문량: 0 };
-          }
+          if (purchaser === "안성물류" && receiver === "안성물류") return { ...row, 주문량: 0 };
           return row;
         });
-      }
 
-      // 알파 전용: 주문량 0 행 제거
-      if (selectedVendor === "알파") {
-        workingRows = workingRows.filter((row) => {
-          const raw = row["주문량"];
-          if (raw === null || raw === undefined || raw === "") return false;
-          const num = toNumberOrZero(raw);
-          return num !== 0;
-        });
+        // 주문량 0 제거
+        workingRows = workingRows.filter((row) => toNumberOrZero(row["주문량"]) !== 0);
       }
 
       const result = [];
@@ -542,74 +448,45 @@
         let internalQty = 0;
         let cartonForRow = 0;
 
-        // 수량 계산
         if (selectedVendor === "알파") {
           const orderQty = toNumberOrZero(row["주문량"]);
           let unitsPerBox = 0;
-          let isArtMate   = false;
+          let isArtMate = false;
 
-          const code = (row["상품코드"] ?? "").toString().trim();
+          const code = getAlphaProductCodeFromOrderRow(row);
           if (code && alphaGoodsByCode.has(code)) {
             const goods = alphaGoodsByCode.get(code);
             unitsPerBox = toNumberOrZero(goods.입수);
-            if (goods.상품분류1 === "아트메이트") {
-              isArtMate = true;
-            }
+            isArtMate   = (goods.상품분류1 === "아트메이트");
             cartonForRow = toNumberOrZero(goods.카톤);
           }
 
-          internalQty = isArtMate ? orderQty : unitsPerBox * orderQty;
+          internalQty = isArtMate ? orderQty : (unitsPerBox * orderQty);
         } else {
           internalQty = toNumberOrZero(row["주문량"] ?? row["수량"]);
-          cartonForRow = 0; // 네이버/오피스디포는 카톤 규칙 없음
+          cartonForRow = 0;
         }
 
-        // 카톤/나머지 계산
-        let adjustedQtyMain;
-        let boxQtyMain;
+        // 카톤 분할(알파만)
+        let adjustedQtyMain = internalQty;
+        let boxQtyMain = 1;
         let remainder = 0;
 
-        if (
-          selectedVendor === "알파" &&
-          cartonForRow > 0 &&
-          internalQty > cartonForRow
-        ) {
+        if (selectedVendor === "알파" && cartonForRow > 0 && internalQty > cartonForRow) {
           const quotient = Math.floor(internalQty / cartonForRow);
           remainder = internalQty - quotient * cartonForRow;
 
           adjustedQtyMain = cartonForRow;
           boxQtyMain = quotient;
-        } else {
-          adjustedQtyMain = internalQty;
-          boxQtyMain = 1;
-          remainder = 0;
         }
 
-        // 기본 행 생성
-        const baseRow = buildWaybillRowFromSource(
-          row,
-          mapping,
-          internalQty,
-          adjustedQtyMain,
-          boxQtyMain,
-          cartonForRow
-        );
+        // 메인 행
+        const baseRow = buildWaybillRowFromSource(row, mapping, internalQty, adjustedQtyMain, boxQtyMain, cartonForRow);
         result.push(baseRow);
 
-        // 알파 + 나머지 있는 경우: 수취인 정보 복사한 추가 행
-        if (
-          selectedVendor === "알파" &&
-          cartonForRow > 0 &&
-          remainder > 0
-        ) {
-          const remainderRow = buildWaybillRowFromSource(
-            row,
-            mapping,
-            internalQty,
-            remainder,   // 나머지 수량
-            1,           // 박스수량 1
-            cartonForRow
-          );
+        // 나머지 행(알파만, remainder > 0)
+        if (selectedVendor === "알파" && cartonForRow > 0 && remainder > 0) {
+          const remainderRow = buildWaybillRowFromSource(row, mapping, internalQty, remainder, 1, cartonForRow);
           result.push(remainderRow);
         }
       });
@@ -617,185 +494,110 @@
       return result;
     }
 
-    // 🔧 개별 행(waybill 한 줄) 생성 함수
     function buildWaybillRowFromSource(srcRow, mapping, internalQty, adjustedQty, boxQty, cartonForRow) {
       const out = {};
 
       for (const field of WAYBILL_FIELDS) {
         const key = field.key;
 
-        // 보내는분 주소/전화는 모든 업체 공통 고정값
-        if (key === "보내는분주소(전체, 분할)") {
-          out[key] = "경기도 김포시 애기봉로 206";
-          continue;
-        }
-        if (key === "보내는분전화번호") {
-          out[key] = "031-987-9495";
-          continue;
-        }
+        // 공통 고정
+        if (key === "보내는분주소(전체, 분할)") { out[key] = "경기도 김포시 애기봉로 206"; continue; }
+        if (key === "보내는분전화번호")        { out[key] = "031-987-9495"; continue; }
 
-        // 알파 전용: 발주처=안성물류 → 보내는분성명 = "알파 안성"
+        // 알파: 발주처=안성물류 → 보내는분성명
         if (selectedVendor === "알파" && key === "보내는분성명") {
           const purchaser = (srcRow["발주처"] ?? "").toString().trim();
           out[key] = purchaser === "안성물류" ? "알파 안성" : "";
           continue;
         }
 
-        // 알파 전용: 수령자 매핑
+        // 알파: 받는분 매핑
         if (selectedVendor === "알파") {
-          if (key === "받는분성명") {
-            out[key] = srcRow["수령자명"] ?? "";
-            continue;
-          }
-          if (key === "받는분주소(전체, 분할)") {
-            out[key] = srcRow["수령자 주소"] ?? "";
-            continue;
-          }
+          if (key === "받는분성명") { out[key] = srcRow["수령자명"] ?? ""; continue; }
+          if (key === "받는분주소(전체, 분할)") { out[key] = srcRow["수령자 주소"] ?? ""; continue; }
           if (key === "받는분전화번호") {
-            const phone1 = (srcRow["수령자 전화번호"] ?? "").toString().trim();
-            const phone2 = (srcRow["수령자 휴대전화"] ?? "").toString().trim();
-            out[key] = phone1 || phone2 || "";
+            const p1 = (srcRow["수령자 전화번호"] ?? "").toString().trim();
+            const p2 = (srcRow["수령자 휴대전화"] ?? "").toString().trim();
+            out[key] = p1 || p2 || "";
             continue;
           }
-          if (key === "받는분기타연락처") {
-            out[key] = srcRow["수령자 휴대전화"] ?? "";
-            continue;
-          }
+          if (key === "받는분기타연락처") { out[key] = srcRow["수령자 휴대전화"] ?? ""; continue; }
         }
 
-        // 네이버 전용: 수령자 매핑
-        // 수취인명 → 받는분성명
-        // 통합배송지 → 받는분주소(전체, 분할)
-        // 수취인연락처1 → 받는분전화번호
-        // 수취인연락처2 → 받는분기타연락처
+        // 네이버: 받는분 매핑
         if (selectedVendor === "네이버") {
-          if (key === "받는분성명") {
-            out[key] = srcRow["수취인명"] ?? "";
-            continue;
-          }
-          if (key === "받는분주소(전체, 분할)") {
-            out[key] = srcRow["통합배송지"] ?? "";
-            continue;
-          }
-          if (key === "받는분전화번호") {
-            out[key] = srcRow["수취인연락처1"] ?? "";
-            continue;
-          }
-          if (key === "받는분기타연락처") {
-            out[key] = srcRow["수취인연락처2"] ?? "";
-            continue;
-          }
+          if (key === "받는분성명") { out[key] = srcRow["수취인명"] ?? ""; continue; }
+          if (key === "받는분주소(전체, 분할)") { out[key] = srcRow["통합배송지"] ?? ""; continue; }
+          if (key === "받는분전화번호") { out[key] = srcRow["수취인연락처1"] ?? ""; continue; }
+          if (key === "받는분기타연락처") { out[key] = srcRow["수취인연락처2"] ?? ""; continue; }
         }
 
-        // 오피스디포 전용: 수령자 매핑
-        // 수령자명 → 받는분성명
-        // 수령자 주소 → 받는분주소(전체, 분할)
-        // 수령자 전화번호 → 받는분전화번호
-        // 수령자 휴대전화 → 받는분기타연락처
+        // 오피스디포: 받는분 매핑
         if (selectedVendor === "오피스디포") {
-          if (key === "받는분성명") {
-            out[key] = srcRow["수령자명"] ?? "";
-            continue;
-          }
-          if (key === "받는분주소(전체, 분할)") {
-            out[key] = srcRow["수령자 주소"] ?? "";
-            continue;
-          }
-          if (key === "받는분전화번호") {
-            out[key] = srcRow["수령자 전화번호"] ?? "";
-            continue;
-          }
-          if (key === "받는분기타연락처") {
-            out[key] = srcRow["수령자 휴대전화"] ?? "";
-            continue;
-          }
+          if (key === "받는분성명") { out[key] = srcRow["수령자명"] ?? ""; continue; }
+          if (key === "받는분주소(전체, 분할)") { out[key] = srcRow["수령자 주소"] ?? ""; continue; }
+          if (key === "받는분전화번호") { out[key] = srcRow["수령자 전화번호"] ?? ""; continue; }
+          if (key === "받는분기타연락처") { out[key] = srcRow["수령자 휴대전화"] ?? ""; continue; }
         }
 
-        // 알파 전용: 기본운임
-        // - adjustedQty == 카톤 & 운임값 있으면 → 운임 사용
-        // - 그 외 → 기본 사용
+        // 알파: 기본운임(수량==카톤이면 운임, 아니면 기본)
         if (selectedVendor === "알파" && key === "기본운임") {
           let value = "";
-
-          const code = (srcRow["상품코드"] ?? "").toString().trim();
+          const code = getAlphaProductCodeFromOrderRow(srcRow);
           if (code && alphaGoodsByCode.has(code)) {
-            const goods      = alphaGoodsByCode.get(code);
-            const cartonNum  = toNumberOrZero(goods.카톤);
-            const basicFare  = goods.기본;
-            const shipFare   = goods.운임;
+            const goods = alphaGoodsByCode.get(code);
+            const cartonNum = toNumberOrZero(goods.카톤);
+            const shipFare  = goods.운임;
+            const basicFare = goods.기본;
             const qtyForFare = toNumberOrZero(adjustedQty);
 
-            if (
-              cartonNum > 0 &&
-              qtyForFare === cartonNum &&
-              shipFare !== undefined &&
-              shipFare !== null &&
-              shipFare !== ""
-            ) {
+            if (cartonNum > 0 && qtyForFare === cartonNum && shipFare !== undefined && shipFare !== null && shipFare !== "") {
               value = shipFare;
-            } else if (
-              basicFare !== undefined &&
-              basicFare !== null &&
-              basicFare !== ""
-            ) {
+            } else if (basicFare !== undefined && basicFare !== null && basicFare !== "") {
               value = basicFare;
             }
           }
-
           if (!value) {
-            const mappedHeader = mapping[key];
-            if (mappedHeader) {
-              value = srcRow[mappedHeader] ?? "";
-            }
+            const mapped = mapping[key];
+            if (mapped) value = srcRow[mapped] ?? "";
           }
-
           out[key] = value;
           continue;
         }
 
-        // 알파 전용: 품목명 = (품목파일 품목명 or 매핑값) + " - " + adjustedQty + "EA"
+        // ✅ 알파: 품목명 = 품목파일(상품코드) 조회 + " - " + adjustedQty + "EA"
         if (selectedVendor === "알파" && key === "품목명") {
           let baseName = "";
-          const code = (srcRow["상품코드"] ?? "").toString().trim();
+          const code = getAlphaProductCodeFromOrderRow(srcRow);
 
           if (code && alphaGoodsByCode.has(code)) {
             const goods = alphaGoodsByCode.get(code);
-            if (goods && goods.품목명) {
-              baseName = goods.품목명;
-            }
+            baseName = (goods?.품목명 ?? "").toString().trim();
           }
 
           if (!baseName) {
-            const mappedHeaderForItem = mapping[key];
-            if (mappedHeaderForItem) {
-              baseName = srcRow[mappedHeaderForItem] ?? "";
-            }
+            const mapped = mapping[key];
+            if (mapped) baseName = (srcRow[mapped] ?? "").toString().trim();
           }
 
           out[key] = `${baseName} - ${adjustedQty}EA`;
           continue;
         }
 
-        // 알파 전용: 박스수량
+        // 알파: 박스수량
         if (selectedVendor === "알파" && key === "박스수량") {
           out[key] = boxQty;
           continue;
         }
 
-        // 그 외 공통: 매핑 UI에 따른 값 사용
+        // 그 외: 매핑 UI 값
         const mappedHeader = mapping[key];
-
         if (!mappedHeader) {
-          if (key === "박스수량") {
-            out[key] = 1;
-          } else {
-            out[key] = "";
-          }
+          out[key] = (key === "박스수량") ? 1 : "";
           continue;
         }
 
         const value = srcRow[mappedHeader];
-
         if (key === "박스수량") {
           const num = Number(value);
           out[key] = Number.isFinite(num) && num > 0 ? num : 1;
@@ -805,16 +607,14 @@
       }
 
       // 후처리용 내부 필드
-      out["_internal_qty"]  = internalQty;
-      out["_adjusted_qty"]  = adjustedQty;
-      out["_carton"]        = cartonForRow;
+      out["_internal_qty"] = internalQty;
+      out["_adjusted_qty"] = adjustedQty;
+      out["_carton"] = cartonForRow;
 
       return out;
     }
 
-    // 🔹 알파 전용 운임구분 후처리
-    // - 기본운임이 "X" 이면 운임구분 = "■■X■■" (최우선)
-    // - 받는분성명+주소+전화가 2개 이상 중복이고, 수량(adjusted_qty) < 카톤 → 운임구분 = "★★O★★"
+    // 알파 전용 운임구분 후처리
     function applyPostFareRules(rows) {
       if (selectedVendor !== "알파") return rows;
 
@@ -824,38 +624,31 @@
         const name  = (row["받는분성명"] ?? "").toString().trim();
         const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
         const phone = (row["받는분전화번호"] ?? "").toString().trim();
-        const key   = `${name}||${addr}||${phone}`;
-
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(idx);
+        const k = `${name}||${addr}||${phone}`;
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(idx);
       });
 
-      rows.forEach((row, idx) => {
+      rows.forEach((row) => {
         const name  = (row["받는분성명"] ?? "").toString().trim();
         const addr  = (row["받는분주소(전체, 분할)"] ?? "").toString().trim();
         const phone = (row["받는분전화번호"] ?? "").toString().trim();
-        const key   = `${name}||${addr}||${phone}`;
-        const idxList = groups.get(key) || [];
-        const duplicatedReceiver = idxList.length >= 2;
+        const k = `${name}||${addr}||${phone}`;
+        const duplicated = (groups.get(k) || []).length >= 2;
 
-        const basicFareRaw = row["기본운임"];
-        const basicFareStr = basicFareRaw === null || basicFareRaw === undefined
-          ? ""
-          : String(basicFareRaw).trim().toUpperCase();
+        const basicFareStr = (row["기본운임"] ?? "").toString().trim().toUpperCase();
 
-        // 1) 기본운임이 X인 행: 운임구분 = "■■X■■"
+        // 최우선: 기본운임 X
         if (basicFareStr === "X") {
           row["운임구분"] = "■■X■■";
           return;
         }
 
-        // 2) 수취인 중복 + 수량 < 카톤: 운임구분 = "★★O★★"
-        if (duplicatedReceiver) {
-          const qty    = toNumberOrZero(row["_adjusted_qty"]);
+        // 중복 수취인 + 수량 < 카톤
+        if (duplicated) {
+          const qty = toNumberOrZero(row["_adjusted_qty"]);
           const carton = toNumberOrZero(row["_carton"]);
-          if (carton > 0 && qty < carton) {
-            row["운임구분"] = "★★O★★";
-          }
+          if (carton > 0 && qty < carton) row["운임구분"] = "★★O★★";
         }
       });
 
@@ -868,22 +661,17 @@
         return;
       }
 
-      const maxRows = 10;
-      const previewRows = rows.slice(0, maxRows);
+      const previewRows = rows.slice(0, 10);
       const keys = Object.keys(previewRows[0]);
 
-      let html = "<div>주문 데이터 미리보기 (상위 " + previewRows.length + "행)</div>";
+      let html = `<div>주문 데이터 미리보기 (상위 ${previewRows.length}행)</div>`;
       html += "<table><thead><tr>";
-      for (const key of keys) {
-        html += "<th>" + escapeHtml(key) + "</th>";
-      }
+      for (const key of keys) html += `<th>${escapeHtml(key)}</th>`;
       html += "</tr></thead><tbody>";
 
       for (const row of previewRows) {
         html += "<tr>";
-        for (const key of keys) {
-          html += "<td>" + escapeHtml(row[key]) + "</td>";
-        }
+        for (const key of keys) html += `<td>${escapeHtml(row[key])}</td>`;
         html += "</tr>";
       }
 
