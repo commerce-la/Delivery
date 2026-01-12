@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>알파 Waybill 변환 (최종본)</title>
+  <title>Waybill 변환 (알파/네이버)</title>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
@@ -14,7 +14,7 @@
     h1 { font-size: 18px; margin: 0 0 8px; }
     p { margin: 0 0 10px; color:#cbd5f5; font-size: 13px; line-height: 1.5; }
     label { display:block; font-size: 12px; margin: 12px 0 6px; color:#e5e7eb; }
-    input[type="file"]{
+    select, input[type="file"]{
       width:100%; padding:10px; background:#020617; color:#e5e7eb;
       border:1px solid rgba(148,163,184,.6); border-radius:10px;
     }
@@ -29,32 +29,39 @@
     table{ border-collapse:collapse; width:100%; font-size:12px; }
     th,td{ border:1px solid rgba(148,163,184,.5); padding:4px 6px; white-space:nowrap; }
     th{ background:rgba(37,99,235,.25); position: sticky; top: 0; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .small { font-size: 12px; color:#cbd5f5; margin: 6px 0 10px; }
     .badge { font-size: 11px; color:#e5e7eb; background: rgba(148,163,184,.18); border:1px solid rgba(148,163,184,.35); padding: 2px 8px; border-radius: 9999px; }
-    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     code { background: rgba(148,163,184,.15); padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 
 <body>
 <main>
-  <h1>알파 Waybill 변환 (최종본)</h1>
+  <h1>Waybill 변환 (알파/네이버)</h1>
   <p>
-    공통 품목 파일 + 알파 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
-    (제외) 주문량=0 / 납품금액&lt;1 / 품목명에 [단종]
+    공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
+    (제외) 주문량=0 / 금액&lt;1 / 품목명에 [단종]  → 제외 목록에 사유 표시
   </p>
 
   <div class="card">
-    <label>1. 공통 품목 파일 업로드</label>
+    <label>0. 업체 선택</label>
+    <select id="vendor">
+      <option value="">선택하세요</option>
+      <option value="alpha">알파</option>
+      <option value="naver">네이버</option>
+    </select>
+
+    <label style="margin-top:16px;">1. 공통 품목 파일 업로드</label>
     <input id="goodsFile" type="file" accept=".xlsx,.xls" />
 
-    <label style="margin-top:16px;">2. 알파 주문 파일 업로드</label>
+    <label style="margin-top:16px;">2. 주문 파일 업로드</label>
     <input id="orderFile" type="file" accept=".xlsx,.xls" />
 
     <button id="convertBtn" disabled>waybill.xlsx 생성</button>
     <div id="status" class="status"></div>
 
-    <!-- ✅ 제외 목록 단일 표 -->
+    <!-- 제외 목록 단일 표 -->
     <div id="excludeWrap" class="excludeWrap">
       <div class="row">
         <div class="small"><b>제외된 행 목록</b> (제외사유 / 받는분성명 / 상품코드 / 품목명 / 주문번호)</div>
@@ -80,8 +87,9 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-let alphaMap = new Map(); // 상품코드 -> goods row
+let goodsMap = new Map(); // 코드 -> goods row
 
+const vendorEl   = document.getElementById("vendor");
 const goodsFileEl = document.getElementById("goodsFile");
 const orderFileEl = document.getElementById("orderFile");
 const convertBtn  = document.getElementById("convertBtn");
@@ -93,12 +101,17 @@ const excludeTableEl = document.getElementById("excludeTable");
 const excludeCountEl = document.getElementById("excludeCount");
 const excludeNoteEl  = document.getElementById("excludeNote");
 
+vendorEl.addEventListener("change", () => {
+  setStatus("");
+  updateBtn();
+});
+
 /* ===============================
    파일 업로드 처리
 ================================ */
 goodsFileEl.addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
-  alphaMap.clear();
+  goodsMap.clear();
   goodsRows = [];
 
   if (!f) {
@@ -109,19 +122,20 @@ goodsFileEl.addEventListener("change", async (e) => {
 
   try {
     setStatus("품목 파일 읽는 중...");
-    goodsRows = await readExcel(f);
+    goodsRows = await readExcelFirstSheet(f);
 
+    // ✅ 공통 품목 파일에서 코드 매핑(여러 컬럼을 유연하게 지원)
+    // - 알파: "알파 상품코드"
+    // - 네이버: "네이버 상품코드"(있으면) / 또는 상품코드 계열 컬럼들
     for (const r of goodsRows) {
-      const cell = r["알파 상품코드"];
-      if (!cell) continue;
-
-      String(cell).split(",").forEach(c => {
-        c = normCode(c);
-        if (c) alphaMap.set(c, r);
-      });
+      const codeCandidates = collectGoodsCodes(r);
+      for (const c of codeCandidates) {
+        const key = normCode(c);
+        if (key) goodsMap.set(key, r);
+      }
     }
 
-    setStatus(`품목 파일 로드 완료\n알파 상품코드 매핑: ${alphaMap.size}개`);
+    setStatus(`품목 파일 로드 완료\n코드 매핑: ${goodsMap.size}개`);
   } catch (err) {
     console.error(err);
     setStatus("품목 파일 읽기 오류가 발생했습니다.");
@@ -142,7 +156,17 @@ orderFileEl.addEventListener("change", async (e) => {
 
   try {
     setStatus("주문 파일 읽는 중...");
-    orderRows = await readExcel(f);
+
+    // ✅ 네이버 파일은 시트가 2개(발주발송관리/Sheet1)라서
+    // 네이버 선택 시 "발주발송관리" 우선 로드
+    const vendor = vendorEl.value;
+    if (vendor === "naver") {
+      orderRows = await readExcelSpecificSheet(f, "발주발송관리");
+      if (!orderRows.length) orderRows = await readExcelFirstSheet(f);
+    } else {
+      orderRows = await readExcelFirstSheet(f);
+    }
+
     setStatus(`주문 파일 로드 완료\n주문 행 수: ${orderRows.length}`);
     showPreview(orderRows, "주문 파일 미리보기");
   } catch (err) {
@@ -154,15 +178,22 @@ orderFileEl.addEventListener("change", async (e) => {
 });
 
 function updateBtn() {
-  convertBtn.disabled = !(alphaMap.size > 0 && orderRows.length > 0);
+  const vendor = vendorEl.value;
+  convertBtn.disabled = !(vendor && goodsMap.size > 0 && orderRows.length > 0);
 }
 
+/* ===============================
+   변환 실행
+================================ */
 convertBtn.addEventListener("click", () => {
   try {
     setStatus("변환 중...");
     clearExcludeTable();
 
-    const result = buildWaybill(orderRows);
+    const vendor = vendorEl.value;
+    const result = (vendor === "naver")
+      ? buildWaybillNaver(orderRows)
+      : buildWaybillAlpha(orderRows);
 
     const ws = XLSX.utils.json_to_sheet(result.rows);
     const wb = XLSX.utils.book_new();
@@ -185,49 +216,49 @@ convertBtn.addEventListener("click", () => {
 });
 
 /* ===============================
-   핵심 변환 로직
+   공통: 제외 목록 row 만들기
 ================================ */
-function buildWaybill(orderRows) {
+function makeExcludeRow(reason, receiverName, code, itemName, orderNo) {
+  return {
+    "제외사유": reason,
+    "받는분성명": receiverName || "",
+    "상품코드": code || "",
+    "품목명": itemName || "",
+    "주문번호": orderNo || ""
+  };
+}
+
+/* ===============================
+   알파 변환 (기존 규칙 유지)
+   - 주문량: "주문량"
+   - 금액: "납품금액"(없으면 금액후보 자동)
+   - 수령자: "수령자명/수령자 주소/수령자 전화번호/수령자 휴대전화"
+   - 상품코드: "상품코드"
+================================ */
+function buildWaybillAlpha(rows) {
   const out = [];
+  const excluded = [];
   const missingCodes = new Set();
 
-  // ✅ 제외 목록(단일 배열)
-  const excluded = [];
-
-  for (const r of orderRows) {
+  for (const r of rows) {
     const orderQty = toNum(r["주문량"]);
-    const deliveryAmt = toNum(r["납품금액"]);
-    const code = normCode(r["상품코드"]);
+    const amt = pickAmount(r);
 
-    // baseName: goods 매칭 성공 시 품목명, 실패 시 상품명
-    const goods = alphaMap.get(code);
+    const code = normCode(r["상품코드"]);
+    const goods = goodsMap.get(code);
+
     const baseName = goods
       ? (goods["품목명"] || "").toString().trim()
       : (r["상품명"] || "").toString().trim();
 
-    const baseExcludeRow = {
-      "제외사유": "",
-      "받는분성명": (r["수령자명"] || "").toString().trim(),
-      "상품코드": code,
-      "품목명": baseName,
-      "주문번호": (r["주문번호"] || "").toString().trim()
-    };
+    const receiverName = (r["수령자명"] || "").toString().trim();
+    const orderNo = (r["주문번호"] || "").toString().trim();
 
-    // ✅ 제외 우선순위: 주문량0 -> 납품금액<1 -> [단종]
-    if (!orderQty) {
-      excluded.push({ ...baseExcludeRow, "제외사유": "주문량0" });
-      continue;
-    }
-    if (deliveryAmt < 1) {
-      excluded.push({ ...baseExcludeRow, "제외사유": "납품금액<1" });
-      continue;
-    }
-    if (baseName.includes("[단종]")) {
-      excluded.push({ ...baseExcludeRow, "제외사유": "[단종]" });
-      continue;
-    }
+    // 제외 우선순위
+    if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, code, baseName, orderNo)); continue; }
+    if (amt < 1)   { excluded.push(makeExcludeRow("금액<1", receiverName, code, baseName, orderNo)); continue; }
+    if (baseName.includes("[단종]")) { excluded.push(makeExcludeRow("[단종]", receiverName, code, baseName, orderNo)); continue; }
 
-    // waybill 생성 대상
     let carton = 0;
     let fare = "";
     let alphaTag = "";
@@ -240,36 +271,16 @@ function buildWaybill(orderRows) {
       missingCodes.add(code);
     }
 
-    // 수량 계산
+    // 수량 계산: 시트지/아트메이트면 주문량만, 그 외 입수*주문량
     const units = toNum(r["입수"]);
     const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
     const totalQty = isSpecial ? orderQty : (units * orderQty);
 
-    // 정수 안전 처리
-    const totalQtyInt = Math.round(totalQty);
-    const cartonInt = Math.round(carton);
-
-    let mainQty = totalQtyInt;
-    let boxQty = 1;
-    let remainder = 0;
-
-    if (cartonInt > 0 && totalQtyInt > cartonInt) {
-      boxQty = Math.floor(totalQtyInt / cartonInt);
-      mainQty = cartonInt;
-      remainder = totalQtyInt - cartonInt * boxQty;
-    }
-    if (remainder < 0) remainder = 0;
-
-    out.push(makeRow(r, baseName, alphaTag, mainQty, boxQty, fare));
-    if (remainder > 0) out.push(makeRow(r, baseName, alphaTag, remainder, 1, fare));
+    splitAndPush(out, r, baseName, alphaTag, totalQty, carton, fare, "alpha");
   }
 
-  // 정렬(받는분성명)
-  out.sort((a, b) =>
-    String(a["받는분성명"] || "").localeCompare(String(b["받는분성명"] || ""), "ko")
-  );
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
 
-  // 상태 텍스트(미매칭 코드)
   const lines = [];
   if (missingCodes.size > 0) {
     const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
@@ -281,55 +292,229 @@ function buildWaybill(orderRows) {
 }
 
 /* ===============================
-   행 생성
+   네이버 변환 (업로드 파일 기준)
+   - 시트: "발주발송관리"
+   - 주문량: "수량"
+   - 금액: "최종 상품별 총 주문금액"(없으면 상품가격 등 후보)
+   - 받는분:
+     수취인명 -> 받는분성명
+     통합배송지 -> 받는분주소(전체, 분할)
+     수취인연락처1 -> 받는분전화번호
+     수취인연락처2 -> 받는분기타연락처
+   - 주문번호: "주문번호" (있으면), 없으면 "상품주문번호"
+   - 상품코드: "옵션관리코드"(우선) -> 없으면 "상품번호" -> 없으면 빈값
 ================================ */
-function makeRow(r, baseName, alphaTag, qty, boxQty, fare) {
-  const purchaser = (r["발주처"] || "").toString().trim();
-  const receiver  = (r["수령자명"] || "").toString().trim();
+function buildWaybillNaver(rows) {
+  const out = [];
+  const excluded = [];
+  const missingCodes = new Set();
 
-  let recvPhone  = (r["수령자 전화번호"] || "").toString().trim();
-  let recvMobile = (r["수령자 휴대전화"] || "").toString().trim();
+  for (const r of rows) {
+    const orderQty = toNum(r["수량"]);
+    const amt = pickAmount(r); // 네이버도 후보에서 잡힘
 
-  const isSpecialStore =
-    (purchaser === "동부이촌점" || purchaser === "본점") &&
-    receiver !== "" &&
-    receiver === purchaser;
+    const code = normCode(firstNonEmpty(r, ["옵션관리코드", "상품번호"]));
+    const goods = goodsMap.get(code);
 
-  let senderName = purchaser === "안성물류" ? "알파 안성" : "";
-  if (isSpecialStore) senderName = "라미에이스";
+    const baseName = goods
+      ? (goods["품목명"] || "").toString().trim()
+      : (r["상품명"] || "").toString().trim();
 
-  if (!recvPhone && !recvMobile) {
-    recvPhone  = (r["주문자 전화번호"] || "").toString().trim();
-    recvMobile = (r["주문자 휴대전화"] || "").toString().trim();
-  } else if (!recvPhone) {
-    recvPhone = recvMobile;
+    const receiverName = (r["수취인명"] || "").toString().trim();
+    const orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
+
+    // 제외 우선순위
+    if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, code, baseName, orderNo)); continue; }
+    if (amt < 1)   { excluded.push(makeExcludeRow("금액<1", receiverName, code, baseName, orderNo)); continue; }
+    if (baseName.includes("[단종]")) { excluded.push(makeExcludeRow("[단종]", receiverName, code, baseName, orderNo)); continue; }
+
+    let carton = 0;
+    let fare = "";
+    // 네이버는 알파Tag 사용 안 함(공통 품목 파일에 있어도 품목명 뒤에 붙이지 않음)
+    const alphaTag = "";
+
+    if (goods) {
+      carton = toNum(goods["최대수량"]);
+      fare = (goods["최대운임"] || "").toString().trim();
+    } else {
+      missingCodes.add(code);
+    }
+
+    // 네이버: 주문 파일에 '입수' 없을 가능성 큼 → 품목 파일의 입수 컬럼이 있으면 사용, 없으면 1
+    const units = goods ? toNum(goods["입수"] ?? goods["입수수량"] ?? "") : 1;
+
+    // 수량 계산: 시트지/아트메이트면 주문량만, 그 외 입수*주문량
+    const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
+    const totalQty = isSpecial ? orderQty : (units * orderQty);
+
+    splitAndPush(out, r, baseName, alphaTag, totalQty, carton, fare, "naver");
   }
 
-  // 알파 컬럼 표기(끝 '-' 정리 + 공백 정리)
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
+
+  const lines = [];
+  if (missingCodes.size > 0) {
+    const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
+    lines.push(`[주의] 품목 파일에서 못 찾은 코드: ${missingCodes.size}개`);
+    if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
+  }
+
+  return { rows: out, excluded, statsText: lines.join("\n") };
+}
+
+/* ===============================
+   공통: 카톤 분할 + 행 추가
+================================ */
+function splitAndPush(out, r, baseName, alphaTag, totalQty, carton, fare, mode) {
+  const totalQtyInt = Math.round(totalQty);
+  const cartonInt = Math.round(carton);
+
+  let mainQty = totalQtyInt;
+  let boxQty = 1;
+  let remainder = 0;
+
+  if (cartonInt > 0 && totalQtyInt > cartonInt) {
+    boxQty = Math.floor(totalQtyInt / cartonInt);
+    mainQty = cartonInt;
+    remainder = totalQtyInt - cartonInt * boxQty;
+  }
+  if (remainder < 0) remainder = 0;
+
+  out.push(makeWaybillRow(r, baseName, alphaTag, mainQty, boxQty, fare, mode));
+  if (remainder > 0) out.push(makeWaybillRow(r, baseName, alphaTag, remainder, 1, fare, mode));
+}
+
+/* ===============================
+   공통: waybill row 생성
+================================ */
+function makeWaybillRow(r, baseName, alphaTag, qty, boxQty, fare, mode) {
+  // mode: "alpha" | "naver"
+  let receiver = "";
+  let addr = "";
+  let phone1 = "";
+  let phone2 = "";
+  let memo = "";
+  let orderNo = "";
+  let purchaser = "";
+
+  if (mode === "naver") {
+    receiver = (r["수취인명"] || "").toString().trim();
+    addr = (r["통합배송지"] || "").toString().trim();
+    phone1 = (r["수취인연락처1"] || "").toString().trim();
+    phone2 = (r["수취인연락처2"] || "").toString().trim();
+    memo = (r["배송메세지"] || "").toString().trim();
+    orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
+    purchaser = ""; // 네이버는 발주처 개념 없음(필요하면 추후 추가)
+  } else {
+    receiver = (r["수령자명"] || "").toString().trim();
+    addr = (r["수령자 주소"] || "").toString().trim();
+    phone1 = (r["수령자 전화번호"] || "").toString().trim();
+    phone2 = (r["수령자 휴대전화"] || "").toString().trim();
+    memo = (r["요청메모"] || "").toString().trim();
+    orderNo = (r["주문번호"] || "").toString().trim();
+    purchaser = (r["발주처"] || "").toString().trim();
+  }
+
+  // 연락처 보정(알파 규칙 유지: 둘 다 비면 주문자 연락처)
+  if (!phone1 && !phone2) {
+    // 알파 쪽만 컬럼 있을 가능성 → 없으면 그냥 빈값 유지
+    phone1 = (r["주문자 전화번호"] || "").toString().trim();
+    phone2 = (r["주문자 휴대전화"] || "").toString().trim();
+  } else if (!phone1) {
+    phone1 = phone2;
+  }
+
+  // 보내는분성명 규칙(알파만 적용, 네이버는 기본 공란)
+  let senderName = "";
+  if (mode === "alpha") {
+    const isSpecialStore =
+      (purchaser === "동부이촌점" || purchaser === "본점") &&
+      receiver !== "" &&
+      receiver === purchaser;
+
+    senderName = (purchaser === "안성물류") ? "알파 안성" : "";
+    if (isSpecialStore) senderName = "라미에이스";
+  }
+
+  // 품목명 규칙
   let itemName = baseName;
-  if (alphaTag && alphaTag.trim() !== "") {
+
+  // 알파: goods의 "알파" 컬럼이 있으면 끝 '-' 제거 후 품목명 뒤에 붙이기
+  if (mode === "alpha" && alphaTag && alphaTag.trim() !== "") {
     const cleaned = String(alphaTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
   return {
     "받는분성명": receiver,
-    "받는분주소(전체, 분할)": (r["수령자 주소"] || "").toString().trim(),
-    "받는분전화번호": recvPhone,
-    "받는분기타연락처": recvMobile,
-
+    "받는분주소(전체, 분할)": addr,
+    "받는분전화번호": phone1,
+    "받는분기타연락처": phone2,
     "품목명": `${itemName} - ${qty}EA`,
     "박스수량": boxQty,
     "기본운임": fare,
     "운임구분": "",
-
     "보내는분성명": senderName,
     "보내는분주소(전체, 분할)": SENDER_ADDR,
     "보내는분전화번호": SENDER_PHONE,
-
-    "배송메세지1": (r["요청메모"] || "").toString().trim(),
-    "주문번호": (r["주문번호"] || "").toString().trim()
+    "배송메세지1": memo,
+    "주문번호": orderNo
   };
+}
+
+/* ===============================
+   금액 컬럼 후보 자동 선택
+   - 알파: 납품금액 우선
+   - 네이버: 최종 상품별 총 주문금액 우선
+================================ */
+function pickAmount(r) {
+  const candidates = [
+    "납품금액",
+    "최종 상품별 총 주문금액",
+    "상품가격",
+    "최초 상품별 총 주문금액",
+    "정산예정금액"
+  ];
+  for (const k of candidates) {
+    if (r && Object.prototype.hasOwnProperty.call(r, k)) {
+      const v = toNum(r[k]);
+      // 값이 0일 수도 있으니 그대로 반환(필터에서 <1 처리)
+      return v;
+    }
+  }
+  return 999999; // 금액 컬럼이 아예 없으면 필터 통과시키기(원하면 0으로 바꿀 수 있음)
+}
+
+/* ===============================
+   공통 품목 파일에서 코드 모으기
+   - "알파 상품코드", "네이버 상품코드" 등 상품코드 관련 컬럼을 모두 수집
+================================ */
+function collectGoodsCodes(row) {
+  const codes = [];
+
+  // 우선적으로 많이 쓰는 컬럼들
+  const preferred = ["알파 상품코드", "네이버 상품코드", "상품코드", "옵션관리코드"];
+  for (const k of preferred) {
+    if (row[k]) codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+  }
+
+  // 그 외: 컬럼명에 "상품코드"가 포함된 것들도 추가 수집
+  for (const k of Object.keys(row)) {
+    if (preferred.includes(k)) continue;
+    if (k.includes("상품코드") && row[k]) {
+      codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+    }
+  }
+
+  return Array.from(new Set(codes));
+}
+
+function firstNonEmpty(r, keys) {
+  for (const k of keys) {
+    const v = r[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
 }
 
 /* ===============================
@@ -354,7 +539,6 @@ function renderExcludeTable(list) {
   excludeCountEl.textContent = `${count}건`;
 
   const keys = ["제외사유", "받는분성명", "상품코드", "품목명", "주문번호"];
-
   const maxShow = 300;
   const rows = list.slice(0, maxShow);
 
@@ -378,31 +562,21 @@ function renderExcludeTable(list) {
 }
 
 /* ===============================
-   유틸 / 미리보기
+   파일 읽기 / 미리보기 / 유틸
 ================================ */
-async function readExcel(file) {
+async function readExcelFirstSheet(file) {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data);
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { defval: "" });
 }
 
-function normCode(x) {
-  if (x === null || x === undefined) return "";
-  let s = String(x).trim();
-  if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
-  return s;
-}
-
-function toNum(x) {
-  if (x === null || x === undefined || x === "") return 0;
-  const s = String(x).replace(/,/g, "").trim();
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function setStatus(t) {
-  statusEl.textContent = t;
+async function readExcelSpecificSheet(file, sheetName) {
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data);
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return [];
+  return XLSX.utils.sheet_to_json(ws, { defval: "" });
 }
 
 function showPreview(rows, title) {
@@ -427,6 +601,24 @@ function showPreview(rows, title) {
   html += "</tbody></table>";
 
   previewEl.innerHTML = html;
+}
+
+function normCode(x) {
+  if (x === null || x === undefined) return "";
+  let s = String(x).trim();
+  if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
+  return s;
+}
+
+function toNum(x) {
+  if (x === null || x === undefined || x === "") return 0;
+  const s = String(x).replace(/,/g, "").trim();
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function setStatus(t) {
+  statusEl.textContent = t;
 }
 
 function escapeHtml(v) {
