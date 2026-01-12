@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>알파 Waybill 변환</title>
+  <title>알파 Waybill 변환 (최종 통합본)</title>
 
+  <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -14,175 +15,275 @@
     h1 { font-size: 18px; margin: 0 0 8px; }
     p { margin: 0 0 10px; color:#cbd5f5; font-size: 13px; line-height: 1.5; }
     label { display:block; font-size: 12px; margin: 12px 0 6px; }
-    input[type="file"]{ width:100%; padding:10px; background:#020617; color:#e5e7eb; border:1px solid rgba(148,163,184,.6); border-radius:10px; }
-    button{ margin-top:14px; padding:10px 16px; border:0; border-radius:9999px; background:#2563eb; color:#fff; cursor:pointer; }
+    input[type="file"]{
+      width:100%; padding:10px; background:#020617; color:#e5e7eb;
+      border:1px solid rgba(148,163,184,.6); border-radius:10px;
+    }
+    button{
+      margin-top:14px; padding:10px 16px; border:0; border-radius:9999px;
+      background:#2563eb; color:#fff; cursor:pointer; font-size: 13px;
+    }
     button:disabled{ opacity:.5; cursor:not-allowed; }
-    .status{ margin-top:10px; font-size:12px; color:#a5b4fc; white-space:pre-wrap; }
-    table{ border-collapse:collapse; width:100%; font-size:12px; margin-top:12px; }
+    .status{ margin-top:10px; font-size:12px; color:#a5b4fc; white-space:pre-wrap; min-height: 18px; }
+    .preview { margin-top: 12px; max-height: 280px; overflow:auto; border-top:1px solid rgba(148,163,184,.35); padding-top: 12px; }
+    table{ border-collapse:collapse; width:100%; font-size:12px; }
     th,td{ border:1px solid rgba(148,163,184,.5); padding:4px 6px; white-space:nowrap; }
     th{ background:rgba(37,99,235,.25); }
+    code { background: rgba(148,163,184,.15); padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 
 <body>
 <main>
-  <h1>알파 Waybill 변환</h1>
-  <p>공통 품목 파일 + 알파 주문 파일 → waybill.xlsx 생성</p>
+  <h1>알파 Waybill 변환 (최종 통합본)</h1>
+  <p>공통 품목 파일 + 알파 주문 파일을 업로드하면 <code>waybill.xlsx</code>를 생성합니다.</p>
 
   <div class="card">
-    <label>1. 공통 품목 파일 (erp_goods.xlsx)</label>
+    <label>1. 공통 품목 파일 업로드</label>
     <input id="goodsFile" type="file" accept=".xlsx,.xls" />
 
-    <label>2. 알파 주문 파일</label>
+    <label style="margin-top:16px;">2. 알파 주문 파일 업로드</label>
     <input id="orderFile" type="file" accept=".xlsx,.xls" />
 
     <button id="convertBtn" disabled>waybill.xlsx 생성</button>
     <div id="status" class="status"></div>
-    <div id="preview"></div>
+    <div class="preview" id="preview"></div>
   </div>
 </main>
 
 <script>
+/* ===============================
+   고정값
+================================ */
 const SENDER_ADDR  = "경기도 김포시 애기봉로 206";
 const SENDER_PHONE = "031-987-9495";
 
-let alphaMap = new Map();
-let nameToCarton = new Map();
+/* ===============================
+   상태 변수
+================================ */
+let goodsRows = [];
 let orderRows = [];
+let alphaMap = new Map();      // 상품코드 -> goods row
+let nameToCarton = new Map();  // 품목명 -> 최대수량
 
-const goodsFile = document.getElementById("goodsFile");
-const orderFile = document.getElementById("orderFile");
-const convertBtn = document.getElementById("convertBtn");
-const statusEl = document.getElementById("status");
-const previewEl = document.getElementById("preview");
+const goodsFileEl = document.getElementById("goodsFile");
+const orderFileEl = document.getElementById("orderFile");
+const convertBtn  = document.getElementById("convertBtn");
+const statusEl    = document.getElementById("status");
+const previewEl   = document.getElementById("preview");
 
-goodsFile.onchange = async e => {
+/* ===============================
+   파일 업로드 처리
+================================ */
+goodsFileEl.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
   alphaMap.clear();
   nameToCarton.clear();
-  const rows = await readExcel(e.target.files[0]);
+  goodsRows = [];
 
-  rows.forEach(r => {
-    const codes = String(r["알파 상품코드"] || "").split(",");
-    codes.forEach(c => {
-      c = norm(c);
+  if (!f) {
+    setStatus("품목 파일을 선택해 주세요.");
+    updateBtn();
+    return;
+  }
+
+  setStatus("품목 파일 읽는 중...");
+  goodsRows = await readExcel(f);
+
+  for (const r of goodsRows) {
+    const cell = r["알파 상품코드"];
+    if (!cell) continue;
+
+    String(cell).split(",").forEach(c => {
+      c = normCode(c);
       if (c) alphaMap.set(c, r);
     });
-  });
-
-  alphaMap.forEach(v => {
-    nameToCarton.set(v["품목명"], num(v["최대수량"]));
-  });
-
-  status("품목 파일 로드 완료");
-  toggle();
-};
-
-orderFile.onchange = async e => {
-  orderRows = await readExcel(e.target.files[0]);
-  status("주문 파일 로드 완료");
-  toggle();
-};
-
-convertBtn.onclick = () => {
-  const out = [];
-
-  orderRows.forEach(r => {
-    const orderQty = num(r["주문량"]);
-    if (!orderQty) return;
-
-    const goods = alphaMap.get(norm(r["상품코드"])) || {};
-    const name = goods["품목명"] || r["상품명"];
-    const carton = num(goods["최대수량"]);
-    const fare = goods["최대운임"] || "";
-    const units = num(r["입수"]);
-
-    const isSpecial = name.includes("시트지");
-    const qty = isSpecial ? orderQty : orderQty * units;
-
-    const mainQty = carton && qty > carton ? carton : qty;
-    const boxQty = carton && qty > carton ? Math.floor(qty / carton) : 1;
-    const remainder = carton && qty > carton ? qty - carton * boxQty : 0;
-
-    const base = makeRow(r, name, mainQty, boxQty, fare);
-    out.push(base);
-    if (remainder) out.push(makeRow(r, name, remainder, 1, fare));
-  });
-
-  out.sort((a,b)=>String(a["받는분성명"]).localeCompare(b["받는분성명"],"ko"));
-
-  download(out);
-};
-
-function makeRow(r, name, qty, box, fare) {
-  const purchaser = (r["발주처"] || "").toString().trim();     // 발주처
-  const receiver  = (r["수령자명"] || "").toString().trim();   // 수령자명
-
-  // 기본 수취인 연락처
-  let recvPhone  = (r["수령자 전화번호"] || "").toString().trim();
-  let recvMobile = (r["수령자 휴대전화"] || "").toString().trim();
-
-  // ✅ 규칙: 발주처가 동부이촌점/본점 AND 수령자명 == 발주처 인 경우
-  const isSpecialStore =
-    (purchaser === "동부이촌점" || purchaser === "본점") &&
-    receiver !== "" &&
-    receiver === purchaser;
-
-  // 보내는분성명 기본값(기존 로직 유지)
-  let senderName = (purchaser === "안성물류") ? "알파 안성" : "";
-
-  // ✅ 특수 케이스면 보내는분성명 = 라미에이스
-  if (isSpecialStore) {
-    senderName = "라미에이스";
   }
 
-  // ✅ 전화번호/기타연락처 fallback 규칙
-  // - 받는분전화번호, 받는분기타연락처 둘 다 공란이면
-  //   받는분전화번호 = 주문자 전화번호
-  //   받는분기타연락처 = 주문자 휴대전화
-  if (!recvPhone && !recvMobile) {
-    recvPhone  = (r["주문자 전화번호"] || "").toString().trim();
-    recvMobile = (r["주문자 휴대전화"] || "").toString().trim();
-  } else {
-    // 기존 로직 유지: 받는분전화번호가 비었으면 휴대전화로 대체
-    if (!recvPhone) recvPhone = recvMobile;
+  for (const r of alphaMap.values()) {
+    const name = (r["품목명"] || "").trim();
+    const carton = toNum(r["최대수량"]);
+    if (name) nameToCarton.set(name, carton);
   }
 
-  return {
-    "받는분성명": receiver,
-    "받는분주소(전체, 분할)": (r["수령자 주소"] || "").toString().trim(),
-    "받는분전화번호": recvPhone,
-    "받는분기타연락처": recvMobile,
-    "품목명": `${name} - ${qty}EA`,
-    "박스수량": box,
-    "기본운임": fare,
-    "운임구분": "",
-    "보내는분성명": senderName,
-    "보내는분주소(전체, 분할)": SENDER_ADDR,
-    "보내는분전화번호": SENDER_PHONE,
-    "배송메세지1": (r["요청메모"] || "").toString().trim(),
-    "주문번호": (r["주문번호"] || "").toString().trim()
-  };
+  setStatus(`품목 파일 로드 완료\n알파 상품코드 매핑: ${alphaMap.size}개`);
+  updateBtn();
+});
+
+orderFileEl.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
+  orderRows = [];
+
+  if (!f) {
+    setStatus("주문 파일을 선택해 주세요.");
+    updateBtn();
+    return;
+  }
+
+  setStatus("주문 파일 읽는 중...");
+  orderRows = await readExcel(f);
+  setStatus(`주문 파일 로드 완료\n주문 행 수: ${orderRows.length}`);
+  showPreview(orderRows, "주문 파일 미리보기");
+  updateBtn();
+});
+
+function updateBtn() {
+  convertBtn.disabled = !(alphaMap.size > 0 && orderRows.length > 0);
 }
 
-function download(rows){
+convertBtn.addEventListener("click", () => {
+  setStatus("변환 중...");
+  const rows = buildWaybill(orderRows);
+
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "waybill");
   XLSX.writeFile(wb, "waybill.xlsx");
-  status(`완료! (${rows.length}행 생성)`);
+
+  setStatus(`완료!\n생성 행 수: ${rows.length}`);
+  showPreview(rows, "waybill 결과 미리보기");
+});
+
+/* ===============================
+   핵심 변환 로직
+================================ */
+function buildWaybill(orderRows) {
+  const out = [];
+
+  for (const r of orderRows) {
+    const orderQty = toNum(r["주문량"]);
+    if (!orderQty) continue;
+
+    const code = normCode(r["상품코드"]);
+    const goods = alphaMap.get(code);
+
+    let baseName = "";
+    let carton = 0;
+    let fare = "";
+    let alphaTag = "";
+
+    if (goods) {
+      baseName = (goods["품목명"] || "").trim();
+      carton = toNum(goods["최대수량"]);
+      fare = (goods["최대운임"] || "").trim();
+      alphaTag = (goods["알파"] || "").trim();
+    } else {
+      baseName = (r["상품명"] || "").trim();
+    }
+
+    const units = toNum(r["입수"]);
+    const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
+    const totalQty = isSpecial ? orderQty : units * orderQty;
+
+    let mainQty = totalQty;
+    let boxQty = 1;
+    let remainder = 0;
+
+    if (carton > 0 && totalQty > carton) {
+      boxQty = Math.floor(totalQty / carton);
+      mainQty = carton;
+      remainder = totalQty - carton * boxQty;
+    }
+
+    out.push(makeRow(r, baseName, alphaTag, mainQty, boxQty, fare));
+    if (remainder > 0) {
+      out.push(makeRow(r, baseName, alphaTag, remainder, 1, fare));
+    }
+  }
+
+  out.sort((a, b) =>
+    String(a["받는분성명"]).localeCompare(String(b["받는분성명"]), "ko")
+  );
+
+  return out;
 }
 
-function toggle(){ convertBtn.disabled = !(alphaMap.size && orderRows.length); }
-function status(t){ statusEl.textContent = t; }
-function norm(x){ return x ? String(x).replace(/\.0$/,"").trim() : ""; }
-function num(x){ return Number(String(x||0).replace(/,/g,""))||0; }
+/* ===============================
+   행 생성
+================================ */
+function makeRow(r, baseName, alphaTag, qty, boxQty, fare) {
+  const purchaser = (r["발주처"] || "").trim();
+  const receiver  = (r["수령자명"] || "").trim();
 
-async function readExcel(file){
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf);
-  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
+  let recvPhone  = (r["수령자 전화번호"] || "").trim();
+  let recvMobile = (r["수령자 휴대전화"] || "").trim();
+
+  const isSpecialStore =
+    (purchaser === "동부이촌점" || purchaser === "본점") &&
+    receiver === purchaser;
+
+  let senderName = purchaser === "안성물류" ? "알파 안성" : "";
+  if (isSpecialStore) senderName = "라미에이스";
+
+  if (!recvPhone && !recvMobile) {
+    recvPhone  = (r["주문자 전화번호"] || "").trim();
+    recvMobile = (r["주문자 휴대전화"] || "").trim();
+  } else if (!recvPhone) {
+    recvPhone = recvMobile;
+  }
+
+  let itemName = baseName;
+  if (alphaTag) itemName = baseName + alphaTag;
+
+  return {
+    "받는분성명": receiver,
+    "받는분주소(전체, 분할)": (r["수령자 주소"] || "").trim(),
+    "받는분전화번호": recvPhone,
+    "받는분기타연락처": recvMobile,
+
+    "품목명": `${itemName} - ${qty}EA`,
+    "박스수량": boxQty,
+    "기본운임": fare,
+    "운임구분": "",
+
+    "보내는분성명": senderName,
+    "보내는분주소(전체, 분할)": SENDER_ADDR,
+    "보내는분전화번호": SENDER_PHONE,
+
+    "배송메세지1": (r["요청메모"] || "").trim(),
+    "주문번호": (r["주문번호"] || "").trim()
+  };
+}
+
+/* ===============================
+   유틸 / 미리보기
+================================ */
+async function readExcel(file) {
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws, { defval: "" });
+}
+
+function normCode(x) {
+  if (!x) return "";
+  let s = String(x).trim();
+  if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
+  return s;
+}
+
+function toNum(x) {
+  return Number(String(x || 0).replace(/,/g, "")) || 0;
+}
+
+function setStatus(t) {
+  statusEl.textContent = t;
+}
+
+function showPreview(rows, title) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  let html = `<div>${title}</div><table><tr>`;
+  keys.forEach(k => html += `<th>${k}</th>`);
+  html += "</tr>";
+  rows.slice(0, 10).forEach(r => {
+    html += "<tr>";
+    keys.forEach(k => html += `<td>${r[k]}</td>`);
+    html += "</tr>";
+  });
+  html += "</table>";
+  previewEl.innerHTML = html;
 }
 </script>
 </body>
 </html>
-7
