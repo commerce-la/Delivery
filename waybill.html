@@ -172,7 +172,7 @@ function buildWaybill(orderRows) {
     }
 
     const units = toNum(r["입수"]);
-    const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
+    const isSpecial = baseName.includes("시트지");
     const totalQty = isSpecial ? orderQty : units * orderQty;
 
     let mainQty = totalQty;
