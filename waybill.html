@@ -243,11 +243,11 @@
           alphaGoodsByCode.set(code, {
             상품코드:   code,
             품목명:     (row["품목명"] ?? "").toString().trim(),
-            입수:       row["입수"],
-            상품분류1:  (row["상품분류1"] ?? "").toString().trim(),
-            기본:       row["기본"],
-            카톤:       row["카톤"],
-            운임:       row["운임"]
+//          입수:       row["입수"],
+//          상품분류1:  (row["상품분류1"] ?? "").toString().trim(),
+//          기본:       row["기본"],
+            카톤:       row["최대수량"],
+            운임:       row["최대운임"]
           });
         }
 
