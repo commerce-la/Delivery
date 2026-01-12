@@ -113,21 +113,54 @@ convertBtn.onclick = () => {
   download(out);
 };
 
-function makeRow(r, name, qty, box, fare){
+function makeRow(r, name, qty, box, fare) {
+  const purchaser = (r["발주처"] || "").toString().trim();     // 발주처
+  const receiver  = (r["수령자명"] || "").toString().trim();   // 수령자명
+
+  // 기본 수취인 연락처
+  let recvPhone  = (r["수령자 전화번호"] || "").toString().trim();
+  let recvMobile = (r["수령자 휴대전화"] || "").toString().trim();
+
+  // ✅ 규칙: 발주처가 동부이촌점/본점 AND 수령자명 == 발주처 인 경우
+  const isSpecialStore =
+    (purchaser === "동부이촌점" || purchaser === "본점") &&
+    receiver !== "" &&
+    receiver === purchaser;
+
+  // 보내는분성명 기본값(기존 로직 유지)
+  let senderName = (purchaser === "안성물류") ? "알파 안성" : "";
+
+  // ✅ 특수 케이스면 보내는분성명 = 라미에이스
+  if (isSpecialStore) {
+    senderName = "라미에이스";
+  }
+
+  // ✅ 전화번호/기타연락처 fallback 규칙
+  // - 받는분전화번호, 받는분기타연락처 둘 다 공란이면
+  //   받는분전화번호 = 주문자 전화번호
+  //   받는분기타연락처 = 주문자 휴대전화
+  if (!recvPhone && !recvMobile) {
+    recvPhone  = (r["주문자 전화번호"] || "").toString().trim();
+    recvMobile = (r["주문자 휴대전화"] || "").toString().trim();
+  } else {
+    // 기존 로직 유지: 받는분전화번호가 비었으면 휴대전화로 대체
+    if (!recvPhone) recvPhone = recvMobile;
+  }
+
   return {
-    "받는분성명": r["수령자명"],
-    "받는분주소(전체, 분할)": r["수령자 주소"],
-    "받는분전화번호": r["수령자 전화번호"] || r["수령자 휴대전화"],
-    "받는분기타연락처": r["수령자 휴대전화"],
+    "받는분성명": receiver,
+    "받는분주소(전체, 분할)": (r["수령자 주소"] || "").toString().trim(),
+    "받는분전화번호": recvPhone,
+    "받는분기타연락처": recvMobile,
     "품목명": `${name} - ${qty}EA`,
     "박스수량": box,
     "기본운임": fare,
     "운임구분": "",
-    "보내는분성명": r["발주처"] === "안성물류" ? "알파 안성" : "",
+    "보내는분성명": senderName,
     "보내는분주소(전체, 분할)": SENDER_ADDR,
     "보내는분전화번호": SENDER_PHONE,
-    "배송메세지1": r["요청메모"] || "",
-    "주문번호": r["주문번호"] || ""
+    "배송메세지1": (r["요청메모"] || "").toString().trim(),
+    "주문번호": (r["주문번호"] || "").toString().trim()
   };
 }
 
