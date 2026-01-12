@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>알파 Waybill 변환 (최종본)</title>
 
-  <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -26,9 +25,13 @@
     button:disabled{ opacity:.5; cursor:not-allowed; }
     .status{ margin-top:10px; font-size:12px; color:#a5b4fc; white-space:pre-wrap; min-height: 18px; }
     .preview { margin-top: 12px; max-height: 280px; overflow:auto; border-top:1px solid rgba(148,163,184,.35); padding-top: 12px; }
+    .excludeWrap { margin-top: 12px; border-top:1px solid rgba(148,163,184,.35); padding-top: 12px; display:none; }
     table{ border-collapse:collapse; width:100%; font-size:12px; }
     th,td{ border:1px solid rgba(148,163,184,.5); padding:4px 6px; white-space:nowrap; }
-    th{ background:rgba(37,99,235,.25); }
+    th{ background:rgba(37,99,235,.25); position: sticky; top: 0; }
+    .small { font-size: 12px; color:#cbd5f5; margin: 6px 0 10px; }
+    .badge { font-size: 11px; color:#e5e7eb; background: rgba(148,163,184,.18); border:1px solid rgba(148,163,184,.35); padding: 2px 8px; border-radius: 9999px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     code { background: rgba(148,163,184,.15); padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
@@ -37,8 +40,8 @@
 <main>
   <h1>알파 Waybill 변환 (최종본)</h1>
   <p>
-    1) 공통 품목 파일 + 2) 알파 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
-    (필터) 주문량 0 제외 + <b>납품금액 &lt; 1</b> 제외
+    공통 품목 파일 + 알파 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
+    (제외) 주문량=0 / 납품금액&lt;1 / 품목명에 [단종]
   </p>
 
   <div class="card">
@@ -50,6 +53,17 @@
 
     <button id="convertBtn" disabled>waybill.xlsx 생성</button>
     <div id="status" class="status"></div>
+
+    <!-- ✅ 제외 목록 단일 표 -->
+    <div id="excludeWrap" class="excludeWrap">
+      <div class="row">
+        <div class="small"><b>제외된 행 목록</b> (제외사유 / 받는분성명 / 상품코드 / 품목명 / 주문번호)</div>
+        <div class="badge" id="excludeCount">0건</div>
+      </div>
+      <div id="excludeTable" style="max-height:260px; overflow:auto;"></div>
+      <div class="small" id="excludeNote" style="display:none;"></div>
+    </div>
+
     <div class="preview" id="preview"></div>
   </div>
 </main>
@@ -73,6 +87,11 @@ const orderFileEl = document.getElementById("orderFile");
 const convertBtn  = document.getElementById("convertBtn");
 const statusEl    = document.getElementById("status");
 const previewEl   = document.getElementById("preview");
+
+const excludeWrapEl = document.getElementById("excludeWrap");
+const excludeTableEl = document.getElementById("excludeTable");
+const excludeCountEl = document.getElementById("excludeCount");
+const excludeNoteEl  = document.getElementById("excludeNote");
 
 /* ===============================
    파일 업로드 처리
@@ -141,15 +160,24 @@ function updateBtn() {
 convertBtn.addEventListener("click", () => {
   try {
     setStatus("변환 중...");
-    const rows = buildWaybill(orderRows);
+    clearExcludeTable();
 
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const result = buildWaybill(orderRows);
+
+    const ws = XLSX.utils.json_to_sheet(result.rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "waybill");
     XLSX.writeFile(wb, "waybill.xlsx");
 
-    setStatus(`완료!\n생성 행 수: ${rows.length}`);
-    showPreview(rows, "waybill 결과 미리보기");
+    setStatus(
+      `완료!\n생성 행 수: ${result.rows.length}\n` +
+      `제외 행 수: ${result.excluded.length}\n` +
+      (result.statsText ? `\n${result.statsText}` : "")
+    );
+
+    showPreview(result.rows, "waybill 결과 미리보기");
+    renderExcludeTable(result.excluded);
+
   } catch (err) {
     console.error(err);
     setStatus("변환 중 오류가 발생했습니다. 콘솔을 확인해 주세요.");
@@ -163,35 +191,53 @@ function buildWaybill(orderRows) {
   const out = [];
   const missingCodes = new Set();
 
+  // ✅ 제외 목록(단일 배열)
+  const excluded = [];
+
   for (const r of orderRows) {
     const orderQty = toNum(r["주문량"]);
     const deliveryAmt = toNum(r["납품금액"]);
-
-    // ✅ 필터 1) 주문량 0 제외
-    if (!orderQty) continue;
-
-    // ✅ 필터 2) 납품금액 < 1 제외
-    if (deliveryAmt < 1) continue;
-
     const code = normCode(r["상품코드"]);
-    const goods = alphaMap.get(code);
 
-    let baseName = "";
+    // baseName: goods 매칭 성공 시 품목명, 실패 시 상품명
+    const goods = alphaMap.get(code);
+    const baseName = goods
+      ? (goods["품목명"] || "").toString().trim()
+      : (r["상품명"] || "").toString().trim();
+
+    const baseExcludeRow = {
+      "제외사유": "",
+      "받는분성명": (r["수령자명"] || "").toString().trim(),
+      "상품코드": code,
+      "품목명": baseName,
+      "주문번호": (r["주문번호"] || "").toString().trim()
+    };
+
+    // ✅ 제외 우선순위: 주문량0 -> 납품금액<1 -> [단종]
+    if (!orderQty) {
+      excluded.push({ ...baseExcludeRow, "제외사유": "주문량0" });
+      continue;
+    }
+    if (deliveryAmt < 1) {
+      excluded.push({ ...baseExcludeRow, "제외사유": "납품금액<1" });
+      continue;
+    }
+    if (baseName.includes("[단종]")) {
+      excluded.push({ ...baseExcludeRow, "제외사유": "[단종]" });
+      continue;
+    }
+
+    // waybill 생성 대상
     let carton = 0;
     let fare = "";
     let alphaTag = "";
 
     if (goods) {
-      baseName = (goods["품목명"] || "").toString().trim();
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       alphaTag = (goods["알파"] || "").toString().trim();
     } else {
       missingCodes.add(code);
-      baseName = (r["상품명"] || "").toString().trim();
-      carton = 0;
-      fare = "";
-      alphaTag = "";
     }
 
     // 수량 계산
@@ -199,7 +245,7 @@ function buildWaybill(orderRows) {
     const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
     const totalQty = isSpecial ? orderQty : (units * orderQty);
 
-    // ✅ 정수 안전 처리(부동소수 오차 방지)
+    // 정수 안전 처리
     const totalQtyInt = Math.round(totalQty);
     const cartonInt = Math.round(carton);
 
@@ -210,15 +256,12 @@ function buildWaybill(orderRows) {
     if (cartonInt > 0 && totalQtyInt > cartonInt) {
       boxQty = Math.floor(totalQtyInt / cartonInt);
       mainQty = cartonInt;
-      remainder = totalQtyInt - cartonInt * boxQty; // 음수 방지
+      remainder = totalQtyInt - cartonInt * boxQty;
     }
-
     if (remainder < 0) remainder = 0;
 
     out.push(makeRow(r, baseName, alphaTag, mainQty, boxQty, fare));
-    if (remainder > 0) {
-      out.push(makeRow(r, baseName, alphaTag, remainder, 1, fare));
-    }
+    if (remainder > 0) out.push(makeRow(r, baseName, alphaTag, remainder, 1, fare));
   }
 
   // 정렬(받는분성명)
@@ -226,17 +269,15 @@ function buildWaybill(orderRows) {
     String(a["받는분성명"] || "").localeCompare(String(b["받는분성명"] || ""), "ko")
   );
 
-  // 품목 누락 안내
+  // 상태 텍스트(미매칭 코드)
+  const lines = [];
   if (missingCodes.size > 0) {
     const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
-    setStatus(
-      statusEl.textContent +
-      `\n\n[주의] 품목 파일에서 못 찾은 상품코드: ${missingCodes.size}개` +
-      (sample.length ? `\n예시: ${sample.join(", ")}` : "")
-    );
+    lines.push(`[주의] 품목 파일에서 못 찾은 상품코드: ${missingCodes.size}개`);
+    if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
   }
 
-  return out;
+  return { rows: out, excluded, statsText: lines.join("\n") };
 }
 
 /* ===============================
@@ -249,34 +290,25 @@ function makeRow(r, baseName, alphaTag, qty, boxQty, fare) {
   let recvPhone  = (r["수령자 전화번호"] || "").toString().trim();
   let recvMobile = (r["수령자 휴대전화"] || "").toString().trim();
 
-  // ✅ 특수 매장 규칙: 발주처(동부이촌점/본점) & 수령자명==발주처 => 보내는분성명 라미에이스
   const isSpecialStore =
     (purchaser === "동부이촌점" || purchaser === "본점") &&
     receiver !== "" &&
     receiver === purchaser;
 
-  // 보내는분성명 기본: 안성물류 => 알파 안성
   let senderName = purchaser === "안성물류" ? "알파 안성" : "";
-
-  // 특수 매장 우선
   if (isSpecialStore) senderName = "라미에이스";
 
-  // ✅ 연락처 보정
-  // 둘 다 공란이면 주문자 연락처 사용
   if (!recvPhone && !recvMobile) {
     recvPhone  = (r["주문자 전화번호"] || "").toString().trim();
     recvMobile = (r["주문자 휴대전화"] || "").toString().trim();
   } else if (!recvPhone) {
-    // 전화만 비면 휴대전화로 대체
     recvPhone = recvMobile;
   }
 
-  // ✅ 알파 컬럼 표기(끝의 '-' 정리 + 공백 정리)
+  // 알파 컬럼 표기(끝 '-' 정리 + 공백 정리)
   let itemName = baseName;
   if (alphaTag && alphaTag.trim() !== "") {
-    const cleaned = String(alphaTag)
-      .trim()
-      .replace(/\s*-\s*$/g, ""); // 끝 '-' 제거
+    const cleaned = String(alphaTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
@@ -289,20 +321,60 @@ function makeRow(r, baseName, alphaTag, qty, boxQty, fare) {
     "품목명": `${itemName} - ${qty}EA`,
     "박스수량": boxQty,
     "기본운임": fare,
-
-    // ✅ 운임구분 규칙 삭제됨 -> 항상 빈값
     "운임구분": "",
 
     "보내는분성명": senderName,
     "보내는분주소(전체, 분할)": SENDER_ADDR,
     "보내는분전화번호": SENDER_PHONE,
 
-    // 배송메세지1 = 요청메모
     "배송메세지1": (r["요청메모"] || "").toString().trim(),
-
-    // 마지막 컬럼 = 주문번호
     "주문번호": (r["주문번호"] || "").toString().trim()
   };
+}
+
+/* ===============================
+   제외 표 렌더링(단일 표)
+================================ */
+function clearExcludeTable() {
+  excludeWrapEl.style.display = "none";
+  excludeTableEl.innerHTML = "";
+  excludeCountEl.textContent = "0건";
+  excludeNoteEl.style.display = "none";
+  excludeNoteEl.textContent = "";
+}
+
+function renderExcludeTable(list) {
+  const count = list?.length || 0;
+  if (count === 0) {
+    clearExcludeTable();
+    return;
+  }
+
+  excludeWrapEl.style.display = "block";
+  excludeCountEl.textContent = `${count}건`;
+
+  const keys = ["제외사유", "받는분성명", "상품코드", "품목명", "주문번호"];
+
+  const maxShow = 300;
+  const rows = list.slice(0, maxShow);
+
+  let html = "<table><thead><tr>";
+  for (const k of keys) html += `<th>${escapeHtml(k)}</th>`;
+  html += "</tr></thead><tbody>";
+
+  for (const r of rows) {
+    html += "<tr>";
+    for (const k of keys) html += `<td>${escapeHtml(r[k] ?? "")}</td>`;
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+
+  excludeTableEl.innerHTML = html;
+
+  if (count > maxShow) {
+    excludeNoteEl.style.display = "block";
+    excludeNoteEl.textContent = `※ 화면에는 ${maxShow}행까지만 표시됩니다. (전체 ${count}행)`;
+  }
 }
 
 /* ===============================
