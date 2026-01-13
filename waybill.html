@@ -166,7 +166,7 @@ async function loadOrderFile(file) {
     if (vendor === "naver") {
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
-      // 오피스디포(품목별 현황)도 첫 시트(sheet1)라서 첫 시트 사용
+      // 알파/오피스디포(품목별 현황) → 첫 시트
       orderRows = await readExcelFirstSheet(file);
     }
 
@@ -340,9 +340,9 @@ function buildWaybillNaver(rows) {
 }
 
 /* ===============================
-   오피스디포 변환 (업로드 파일 기준: 품목별 현황)
-   - 컬럼 구조가 알파 주문 파일과 동일(수령자명/주소/전화/휴대전화/입수/주문량/납품금액)
-   - 품목 파일의 "오피스디포" 컬럼이 있으면 품목명에 태그로 붙임
+   오피스디포 변환(품목별 현황)
+   ✅ 변경 규칙:
+   - goods["오피스디포"] 값이 있으면 품목명 = baseName + " 오피스디포 - " + qty + "EA"
 ================================ */
 function buildWaybillOffice(rows) {
   const out = [];
@@ -448,7 +448,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
     memo = (firstNonEmpty(r, ["배송메세지", "배송메시지", "배송요청사항", "요청사항"]) || "").toString().trim();
     orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
   } else {
-    // ✅ 알파/오피스디포(품목별 현황) 공통 구조
+    // 알파/오피스디포(품목별 현황) 공통 구조
     receiver = (r["수령자명"] || "").toString().trim();
     addr = (r["수령자 주소"] || "").toString().trim();
     phone1 = (r["수령자 전화번호"] || "").toString().trim();
@@ -458,12 +458,21 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
     purchaser = (r["발주처"] || "").toString().trim();
   }
 
-  // 연락처 보정(네이버: 구매자연락처도 후보)
+  // ✅ 1차 보정: 둘 다 비면 주문자 연락처로(기존 유지)
   if (!phone1 && !phone2) {
     phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || "").toString().trim();
     phone2 = (r["주문자 휴대전화"] || "").toString().trim();
   } else if (!phone1) {
     phone1 = phone2;
+  }
+
+  // ✅ 새 규칙: phone1이 0으로 시작하지 않으면 phone2를 phone1로 기재
+  // (phone2가 비어있으면 그대로 유지)
+  if (phone1 && !String(phone1).trim().startsWith("0") && phone2) {
+    const prev1 = phone1;
+    phone1 = phone2;
+    // 중복 방지: 기존 phone1을 phone2로 남기되 같으면 비움
+    phone2 = (normalizePhone(prev1) === normalizePhone(phone1)) ? "" : prev1;
   }
 
   // 보내는분성명
@@ -473,8 +482,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
   } else if (mode === "office") {
     senderName = "오피스디포";
   } else {
-    // ✅ 알파 추가 규칙:
-    // 발주처=안성물류 AND 받는분성명(수령자명)=안성물류 → 보내는분성명=라미에이스
     if (purchaser === "안성물류" && receiver === "안성물류") {
       senderName = "라미에이스";
     } else {
@@ -488,13 +495,39 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
     }
   }
 
-  // 품목명(알파/오피스디포만 vendorTag 부착)
+  // 품목명 규칙
   let itemName = baseName;
-  if ((mode === "alpha" || mode === "office") && vendorTag && vendorTag.trim() !== "") {
+
+  // ✅ 오피스디포: goods 오피스디포 컬럼 값이 있으면 지정 포맷으로 변경
+  if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
+    itemName = `${baseName} 오피스디포`;
+    return {
+      "받는분성명": receiver,
+      "받는분주소(전체, 분할)": addr,
+      "받는분전화번호": phone1,
+      "받는분기타연락처": phone2,
+
+      "품목명": `${itemName} - ${qty}EA`,   // ← 요청한 형식 그대로: "품목명 + '오피스디포' + - 주문수량EA"
+      "박스수량": boxQty,
+      "기본운임": fare,
+      "운임구분": "",
+
+      "보내는분성명": senderName,
+      "보내는분주소(전체, 분할)": SENDER_ADDR,
+      "보내는분전화번호": SENDER_PHONE,
+
+      "배송메세지1": memo,
+      "주문번호": orderNo
+    };
+  }
+
+  // 알파: vendorTag(알파 컬럼) 부착(기존 유지)
+  if (mode === "alpha" && vendorTag && vendorTag.trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
+  // 기본 출력
   return {
     "받는분성명": receiver,
     "받는분주소(전체, 분할)": addr,
@@ -523,11 +556,11 @@ function pickAmount(r) {
   for (const k of candidates) {
     if (r && Object.prototype.hasOwnProperty.call(r, k)) return toNum(r[k]);
   }
-  return 999999; // 금액 컬럼 없으면 통과
+  return 999999;
 }
 
 /* ===============================
-   공통 품목 파일 코드 수집 (ERP 양식 기준)
+   공통 품목 파일 코드 수집
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
@@ -539,7 +572,7 @@ function collectGoodsCodes(row) {
     "상품코드",
     "옵션관리코드",
     "판매자 상품코드",
-    "품목코드" // ✅ ERP 파일에 있는 실제 코드(추가)
+    "품목코드"
   ];
 
   for (const k of preferred) {
@@ -662,10 +695,9 @@ function normCode(x) {
   return s;
 }
 
-/* ✅ 숫자 파싱 강화: "1개", "2 EA" 등도 숫자 추출 */
+/* ✅ 숫자 파싱 강화 */
 function toNum(x) {
   if (x === null || x === undefined) return 0;
-
   if (typeof x === "number") return Number.isFinite(x) ? x : 0;
 
   let s = String(x)
@@ -688,6 +720,10 @@ function normalizeText(v) {
     .replace(/\u00A0/g, " ")
     .trim()
     .replace(/\s+/g, "");
+}
+
+function normalizePhone(v) {
+  return String(v ?? "").replace(/[^\d]/g, "");
 }
 
 function setStatus(t) { statusEl.textContent = t; }
