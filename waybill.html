@@ -75,12 +75,18 @@
 </main>
 
 <script>
+/* ===============================
+   고정값
+================================ */
 const SENDER_ADDR  = "경기도 김포시 애기봉로 206";
 const SENDER_PHONE = "031-987-9495";
 
+/* ===============================
+   상태 변수
+================================ */
 let goodsRows = [];
 let orderRows = [];
-let goodsMap = new Map();
+let goodsMap = new Map(); // 코드 -> goods row
 
 const vendorEl   = document.getElementById("vendor");
 const goodsFileEl = document.getElementById("goodsFile");
@@ -102,6 +108,9 @@ vendorEl.addEventListener("change", async () => {
   updateBtn();
 });
 
+/* ===============================
+   품목 파일 업로드
+================================ */
 goodsFileEl.addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   goodsMap.clear();
@@ -130,6 +139,9 @@ goodsFileEl.addEventListener("change", async (e) => {
   updateBtn();
 });
 
+/* ===============================
+   주문 파일 업로드
+================================ */
 orderFileEl.addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   orderRows = [];
@@ -151,6 +163,7 @@ async function loadOrderFile(file) {
     setStatus("주문 파일 읽는 중...");
 
     if (vendor === "naver") {
+      // 네이버는 "발주발송관리" 시트가 존재할 가능성이 큼
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
       orderRows = await readExcelFirstSheet(file);
@@ -169,6 +182,9 @@ function updateBtn() {
   convertBtn.disabled = !(vendor && goodsMap.size > 0 && orderRows.length > 0);
 }
 
+/* ===============================
+   변환 실행
+================================ */
 convertBtn.addEventListener("click", () => {
   try {
     setStatus("변환 중...");
@@ -199,6 +215,9 @@ convertBtn.addEventListener("click", () => {
   }
 });
 
+/* ===============================
+   제외 row 생성
+================================ */
 function makeExcludeRow(reason, receiverName, code, itemName, orderNo) {
   return {
     "제외사유": reason,
@@ -209,9 +228,9 @@ function makeExcludeRow(reason, receiverName, code, itemName, orderNo) {
   };
 }
 
-/* -------------------------
-   알파 변환(그대로)
-------------------------- */
+/* ===============================
+   알파 변환(기존 규칙 유지)
+================================ */
 function buildWaybillAlpha(rows) {
   const out = [];
   const excluded = [];
@@ -262,13 +281,12 @@ function buildWaybillAlpha(rows) {
   return { rows: out, excluded, statsText: lines.join("\n") };
 }
 
-/* -------------------------
+/* ===============================
    네이버 변환
-   ✅ 추가 규칙:
-   - 풀필먼트사 == "위킵" → 제외(사유: 위킵)
+   - 풀필먼트사(또는 풀필먼트사(주문 기준)) == "위킵"이면 제외(사유: 위킵)
    - 보내는분성명 = "네이버"
    - 주문량은 "수량"만 사용
-------------------------- */
+================================ */
 function buildWaybillNaver(rows) {
   const out = [];
   const excluded = [];
@@ -284,17 +302,13 @@ function buildWaybillNaver(rows) {
     const baseName = goods ? (goods["품목명"] || "").toString().trim()
                            : (r["상품명"] || "").toString().trim();
 
-    // ✅ 1) 위킵인 제외(최우선)
-    const fulfillment = (r["풀필먼트사"] || "").toString().trim();
+    const fulfillment = normalizeText(r["풀필먼트사"] ?? r["풀필먼트사(주문 기준)"] ?? "");
     if (fulfillment === "위킵") {
       excluded.push(makeExcludeRow("위킵", receiverName, code, baseName, orderNo));
       continue;
     }
 
-    // ✅ 2) 주문량 = 수량(유사 컬럼명도 흡수)
     const orderQty = pickNaverQty(r);
-
-    // ✅ 3) 금액 필터
     const amt = pickAmount(r);
 
     if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, code, baseName, orderNo)); continue; }
@@ -309,9 +323,7 @@ function buildWaybillNaver(rows) {
       missingCodes.add(code);
     }
 
-    // ✅ 네이버는 totalQty = 수량
     const totalQty = orderQty;
-
     splitAndPush(out, r, baseName, "", totalQty, carton, fare, "naver");
   }
 
@@ -327,22 +339,27 @@ function buildWaybillNaver(rows) {
   return { rows: out, excluded, statsText: lines.join("\n") };
 }
 
-/* 네이버 수량 추출 */
+/* ===============================
+   네이버 수량 추출 (강화)
+================================ */
 function pickNaverQty(r) {
   if (Object.prototype.hasOwnProperty.call(r, "수량")) return toNum(r["수량"]);
+
   const keys = Object.keys(r);
   for (const k of keys) {
-    const kk = String(k).replace(/\s+/g, "");
+    const kk = String(k).replace(/\u00A0/g, "").replace(/\s+/g, "");
     if (kk === "수량") return toNum(r[k]);
   }
   for (const k of keys) {
-    const kk = String(k).replace(/\s+/g, "");
+    const kk = String(k).replace(/\u00A0/g, "").replace(/\s+/g, "");
     if (kk.includes("수량") && !kk.includes("클레임")) return toNum(r[k]);
   }
   return 0;
 }
 
-/* 카톤 분할 + 행 추가 */
+/* ===============================
+   카톤 분할 + 행 추가
+================================ */
 function splitAndPush(out, r, baseName, alphaTag, totalQty, carton, fare, mode) {
   const totalQtyInt = Math.round(totalQty);
   const cartonInt = Math.round(carton);
@@ -362,7 +379,9 @@ function splitAndPush(out, r, baseName, alphaTag, totalQty, carton, fare, mode) 
   if (remainder > 0) out.push(makeWaybillRow(r, baseName, alphaTag, remainder, 1, fare, mode));
 }
 
-/* waybill row 생성 */
+/* ===============================
+   waybill row 생성
+================================ */
 function makeWaybillRow(r, baseName, alphaTag, qty, boxQty, fare, mode) {
   let receiver="", addr="", phone1="", phone2="", memo="", orderNo="", purchaser="";
 
@@ -394,16 +413,22 @@ function makeWaybillRow(r, baseName, alphaTag, qty, boxQty, fare, mode) {
   // 보내는분성명
   let senderName = "";
   if (mode === "naver") {
-    // ✅ 네이버는 고정
     senderName = "네이버";
   } else {
-    const isSpecialStore =
-      (purchaser === "동부이촌점" || purchaser === "본점") &&
-      receiver !== "" &&
-      receiver === purchaser;
+    // ✅ 추가 규칙:
+    // 발주처=안성물류 AND 받는분성명(수령자명)=안성물류 → 보내는분성명=라미에이스
+    if (purchaser === "안성물류" && receiver === "안성물류") {
+      senderName = "라미에이스";
+    } else {
+      const isSpecialStore =
+        (purchaser === "동부이촌점" || purchaser === "본점") &&
+        receiver !== "" &&
+        receiver === purchaser;
 
-    senderName = (purchaser === "안성물류") ? "알파 안성" : "";
-    if (isSpecialStore) senderName = "라미에이스";
+      // 기존 규칙
+      senderName = (purchaser === "안성물류") ? "알파 안성" : "";
+      if (isSpecialStore) senderName = "라미에이스";
+    }
   }
 
   // 품목명(알파만 alphaTag 부착)
@@ -418,19 +443,24 @@ function makeWaybillRow(r, baseName, alphaTag, qty, boxQty, fare, mode) {
     "받는분주소(전체, 분할)": addr,
     "받는분전화번호": phone1,
     "받는분기타연락처": phone2,
+
     "품목명": `${itemName} - ${qty}EA`,
     "박스수량": boxQty,
     "기본운임": fare,
     "운임구분": "",
+
     "보내는분성명": senderName,
     "보내는분주소(전체, 분할)": SENDER_ADDR,
     "보내는분전화번호": SENDER_PHONE,
+
     "배송메세지1": memo,
     "주문번호": orderNo
   };
 }
 
-/* 금액 후보 선택 */
+/* ===============================
+   금액 후보 선택
+================================ */
 function pickAmount(r) {
   const candidates = ["납품금액", "최종 상품별 총 주문금액", "상품가격", "최초 상품별 총 주문금액", "정산예정금액"];
   for (const k of candidates) {
@@ -439,15 +469,32 @@ function pickAmount(r) {
   return 999999;
 }
 
-/* 품목 파일 코드 수집 */
+/* ===============================
+   공통 품목 파일 코드 수집 (네이버 상품코드 포함)
+================================ */
 function collectGoodsCodes(row) {
   const codes = [];
-  const preferred = ["알파 상품코드", "네이버 상품번호", "상품번호", "상품코드", "옵션관리코드", "판매자 상품코드"];
-  for (const k of preferred) if (row[k]) codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+  const preferred = [
+    "알파 상품코드",
+    "네이버 상품코드",
+    "네이버 상품번호",
+    "상품번호",
+    "상품코드",
+    "옵션관리코드",
+    "판매자 상품코드"
+  ];
+
+  for (const k of preferred) {
+    if (row[k]) codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+  }
+
   for (const k of Object.keys(row)) {
     if (preferred.includes(k)) continue;
-    if (String(k).includes("상품코드") && row[k]) codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+    if (String(k).includes("상품코드") && row[k]) {
+      codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+    }
   }
+
   return Array.from(new Set(codes));
 }
 
@@ -459,7 +506,9 @@ function firstNonEmpty(r, keys) {
   return "";
 }
 
-/* 제외 표 */
+/* ===============================
+   제외 표
+================================ */
 function clearExcludeTable() {
   excludeWrapEl.style.display = "none";
   excludeTableEl.innerHTML = "";
@@ -498,7 +547,9 @@ function renderExcludeTable(list) {
   }
 }
 
-/* 엑셀 읽기 */
+/* ===============================
+   엑셀 읽기
+================================ */
 async function readExcelFirstSheet(file) {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data);
@@ -519,6 +570,9 @@ async function readExcelByBestSheet(file, sheetCandidates) {
   return XLSX.utils.sheet_to_json(ws, { defval: "" });
 }
 
+/* ===============================
+   미리보기
+================================ */
 function showPreview(rows, title) {
   if (!rows || !rows.length) { previewEl.innerHTML = "<em>미리보기 데이터가 없습니다.</em>"; return; }
 
@@ -540,23 +594,52 @@ function showPreview(rows, title) {
   previewEl.innerHTML = html;
 }
 
-/* 유틸 */
+/* ===============================
+   유틸
+================================ */
 function normCode(x) {
   if (x === null || x === undefined) return "";
   let s = String(x).trim();
   if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
   return s;
 }
+
+/* ✅ 숫자 파싱 강화: "1개", "2 EA" 등도 숫자 추출 */
 function toNum(x) {
-  if (x === null || x === undefined || x === "") return 0;
-  const s = String(x).replace(/,/g, "").trim();
+  if (x === null || x === undefined) return 0;
+
+  if (typeof x === "number") return Number.isFinite(x) ? x : 0;
+
+  let s = String(x)
+    .replace(/\u00A0/g, " ")
+    .replace(/,/g, "")
+    .trim();
+
+  if (!s) return 0;
+
   const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
+  if (Number.isFinite(n)) return n;
+
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : 0;
 }
+
+function normalizeText(v) {
+  return (v ?? "")
+    .toString()
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/\s+/g, "");
+}
+
 function setStatus(t) { statusEl.textContent = t; }
+
 function escapeHtml(v) {
   if (v === null || v === undefined) return "";
-  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
 }
 </script>
 </body>
