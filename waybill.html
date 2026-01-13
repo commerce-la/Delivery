@@ -87,12 +87,10 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-let goodsMap = new Map(); // 기존 코드 유지(알파/오피스디포 등 공통 코드 매핑)
+let goodsMap = new Map(); // 공통 코드 -> goods row (기존 유지)
 
-// ✅ 네이버 전용 인덱스(요청사항 반영)
-// key = "상품번호|옵션정규화"
-let goodsNaverMap = new Map();      // "상품번호|옵션" -> goods row
-let goodsNaverListMap = new Map();  // "상품번호" -> goods rows(list)
+// ✅ 네이버 전용: 상품번호(=네이버 상품코드) -> goods rows[]
+let goodsNaverListMap = new Map();
 
 const vendorEl   = document.getElementById("vendor");
 const goodsFileEl = document.getElementById("goodsFile");
@@ -122,8 +120,6 @@ goodsFileEl.addEventListener("change", async (e) => {
   goodsMap.clear();
   goodsRows = [];
 
-  // ✅ 네이버 인덱스 초기화
-  goodsNaverMap.clear();
   goodsNaverListMap.clear();
 
   if (!f) { setStatus("품목 파일을 선택해 주세요."); updateBtn(); return; }
@@ -133,41 +129,28 @@ goodsFileEl.addEventListener("change", async (e) => {
     goodsRows = await readExcelFirstSheet(f);
 
     for (const r of goodsRows) {
-      // (기존) 공통 코드 매핑 유지
+      // (기존) 공통 코드 매핑
       const codeCandidates = collectGoodsCodes(r);
       for (const c of codeCandidates) {
         const key = normCode(c);
         if (key) goodsMap.set(key, r);
       }
 
-      // ✅ (추가) 네이버 전용 매핑: 네이버 상품코드 + 옵션
+      // ✅ 네이버 전용 매핑: "네이버 상품코드"별로 row 리스트 저장
       const naverCodes = splitCodes(r["네이버 상품코드"]);
-      const goodsOptNorm = normOption(r["옵션"]);
-
       for (const c of naverCodes) {
         const code = normCode(c);
         if (!code) continue;
-
-        const k = `${code}|${goodsOptNorm}`;
-        goodsNaverMap.set(k, r);
-
         if (!goodsNaverListMap.has(code)) goodsNaverListMap.set(code, []);
         goodsNaverListMap.get(code).push(r);
-
-        // 옵션이 비어있는 경우, fallback 키도 하나 만들어 둠
-        if (!goodsOptNorm) {
-          const fallbackKey = `${code}|`;
-          if (!goodsNaverMap.has(fallbackKey)) goodsNaverMap.set(fallbackKey, r);
-        }
       }
     }
 
     setStatus(
       `품목 파일 로드 완료\n` +
       `코드 매핑(공통): ${goodsMap.size}개\n` +
-      `네이버 매핑(상품번호|옵션): ${goodsNaverMap.size}개`
+      `네이버 매핑(상품번호별): ${goodsNaverListMap.size}개`
     );
-
   } catch (err) {
     console.error(err);
     setStatus("품목 파일 읽기 오류가 발생했습니다.");
@@ -217,7 +200,7 @@ async function loadOrderFile(file) {
 
 function updateBtn() {
   const vendor = vendorEl.value;
-  convertBtn.disabled = !(vendor && goodsMap.size > 0 && orderRows.length > 0);
+  convertBtn.disabled = !(vendor && goodsRows.length > 0 && orderRows.length > 0);
 }
 
 /* ===============================
@@ -322,11 +305,12 @@ function buildWaybillAlpha(rows) {
 
 /* ===============================
    네이버 변환
-   ✅ 요청 반영:
-   - 공통 품목 파일: 네이버 상품코드 + 옵션
-   - 네이버 주문 파일: 상품번호 + 옵션정보
-   - goods["품목명"] 을 우선 사용 (예: PVC 200 반투명)
-   - goods["NAVER, 지마켓"] 컬럼이 있으면 품목명에 추가
+   ✅ 핵심: 상품번호 + 옵션정보(2개 이상)로 공통 품목 파일 row 선택
+   - 1순위: 공통 품목 파일 "옵션"에 주문 옵션 토큰들이 모두 포함
+   - 2순위: 공통 품목 파일 "품목명"에 주문 옵션 토큰들이 모두 포함(옵션 컬럼이 비어있는 상품 대응)
+   - 3순위: 후보가 1개면 그 row 사용
+   - 매칭 성공 시 goods["품목명"] 사용 → "PVC 200 반투명" 처럼 짧게 출력
+   - goods["NAVER, 지마켓"] 값 있으면 품목명에 추가(알파처럼)
 ================================ */
 function buildWaybillNaver(rows) {
   const out = [];
@@ -337,37 +321,9 @@ function buildWaybillNaver(rows) {
     const receiverName = (r["수취인명"] || "").toString().trim();
     const orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
 
-    // ✅ 주문 파일 기준 키: 상품번호 + 옵션정보
     const productNo = normCode(r["상품번호"]);
-    const orderOptNorm = normOption(r["옵션정보"]);
-
-    // ✅ 네이버 전용 매칭: "상품번호|옵션"
-    let goods = goodsNaverMap.get(`${productNo}|${orderOptNorm}`);
-
-    // 옵션이 정확히 안 맞는 경우(옵션 컬럼 공란 등) 보정 매칭
-    if (!goods) {
-      const list = goodsNaverListMap.get(productNo) || [];
-
-      if (orderOptNorm) {
-        // 1) goods["옵션"]과 정규화 값이 같은 행
-        goods = list.find(gr => normOption(gr["옵션"]) === orderOptNorm);
-
-        // 2) goods["품목명"]에 옵션 토큰이 포함되는 행 (예: "화이트"가 품목명에 포함)
-        if (!goods) {
-          const tokens = orderOptNorm.split(" ").filter(Boolean);
-          goods = list.find(gr => {
-            const nm = (gr["품목명"] || "").toString();
-            return tokens.every(t => nm.includes(t));
-          });
-        }
-      }
-
-      // 3) 후보가 1개면 그걸 사용
-      if (!goods && list.length === 1) goods = list[0];
-
-      // 4) 마지막 fallback: 옵션 공란 키
-      if (!goods) goods = goodsNaverMap.get(`${productNo}|`);
-    }
+    const goodsList = goodsNaverListMap.get(productNo) || [];
+    const goods = pickBestNaverGoods(goodsList, r["옵션정보"]);
 
     const baseName = goods ? (goods["품목명"] || "").toString().trim()
                            : (r["상품명"] || "").toString().trim();
@@ -390,14 +346,13 @@ function buildWaybillNaver(rows) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
 
-      // ✅ "네이버 컬럼 값" = 공통 품목 파일의 "NAVER, 지마켓"
+      // ✅ 네이버 컬럼 값(공통 품목 파일)
       naverTag = (goods["NAVER, 지마켓"] || "").toString().trim();
     } else {
       missingCodes.add(productNo);
     }
 
-    const totalQty = orderQty;
-    splitAndPush(out, r, baseName, naverTag, totalQty, carton, fare, "naver");
+    splitAndPush(out, r, baseName, naverTag, orderQty, carton, fare, "naver");
   }
 
   out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
@@ -602,7 +557,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
     };
   }
 
-  // ✅ 네이버: goods의 "NAVER, 지마켓" 값이 있으면 품목명에 붙임 (알파처럼)
+  // ✅ 네이버: goods의 "NAVER, 지마켓" 값이 있으면 품목명에 붙임(알파처럼)
   if (mode === "naver" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
@@ -647,7 +602,7 @@ function pickAmount(r) {
 }
 
 /* ===============================
-   공통 품목 파일 코드 수집(기존 유지)
+   공통 품목 파일 코드 수집
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
@@ -782,29 +737,6 @@ function normCode(x) {
   return s;
 }
 
-// ✅ 네이버 옵션 정규화: "색상: 화이트" -> "화이트"
-function normOption(v) {
-  let s = (v ?? "").toString().replace(/\u00A0/g, " ").trim();
-  if (!s) return "";
-
-  // 여러 옵션이 "/" "|" 로 붙는 경우: 각각에서 ":" 또는 "=" 뒤의 값만 뽑아 합침
-  const parts = s.split(/[\/\|]/).map(p => p.trim()).filter(Boolean);
-  const vals = parts.map(p => {
-    const m = p.match(/[:=]\s*(.+)$/);
-    return (m ? m[1] : p).trim();
-  });
-
-  return vals.join(" ").replace(/\s+/g, " ").trim();
-}
-
-// ✅ 공통 품목 파일에서 코드 셀이 "1,2,3" 형태일 수 있어 분해
-function splitCodes(v) {
-  if (v === null || v === undefined) return [];
-  const s = String(v).trim();
-  if (!s) return [];
-  return s.split(",").map(x => x.trim()).filter(Boolean);
-}
-
 /* ✅ 숫자 파싱 강화 */
 function toNum(x) {
   if (x === null || x === undefined) return 0;
@@ -844,6 +776,98 @@ function escapeHtml(v) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/"/g, "&quot;");
+}
+
+/* ✅ "네이버 상품코드"가 "1,2,3" 형태일 수 있어 분해 */
+function splitCodes(v) {
+  if (v === null || v === undefined) return [];
+  const s = String(v).trim();
+  if (!s) return [];
+  return s.split(",").map(x => x.trim()).filter(Boolean);
+}
+
+/* ===============================
+   ✅ 네이버 옵션 매칭 (2옵션 이상 대응)
+================================ */
+
+// 옵션정보/옵션을 토큰 배열로 변환
+// - "규격: 18mm / 색상: 검정" => ["18", "검정"]
+// - "18mm, 검정" => ["18", "검정"]
+function optionTokens(v) {
+  let s = (v ?? "").toString().replace(/\u00A0/g, " ").trim();
+  if (!s || s.toLowerCase() === "nan") return [];
+
+  const parts = s.split(/[\/\|\n]/).map(x => x.trim()).filter(Boolean);
+
+  let tokens = [];
+  for (let p of parts) {
+    const m = p.match(/[:=]\s*(.+)$/);
+    let val = (m ? m[1] : p).trim();
+    if (!val) continue;
+
+    tokens.push(...val.split(/[,，]/).map(x => x.trim()).filter(Boolean));
+  }
+
+  tokens = tokens
+    .map(t => t.replace(/\s+/g, " ").trim())
+    .map(t => {
+      // "18mm" -> "18"
+      const mm = t.match(/^(\d+)\s*mm$/i);
+      return mm ? mm[1] : t;
+    })
+    .filter(Boolean);
+
+  // 중복 제거(순서 유지)
+  const seen = new Set();
+  const out = [];
+  for (const t of tokens) {
+    if (!seen.has(t)) { seen.add(t); out.push(t); }
+  }
+  return out;
+}
+
+// 품목명에 옵션 토큰(2개 이상 포함 가능)이 모두 들어있는지 확인
+// 숫자 토큰은 "18" <-> "18mm" 둘 다 허용
+function nameIncludesAllTokens(name, tokens) {
+  const n = (name ?? "").toString();
+  return tokens.every(t => {
+    if (!t) return true;
+    if (/^\d+$/.test(t)) return n.includes(t) || n.includes(`${t}mm`);
+    return n.includes(t);
+  });
+}
+
+// 네이버 goods 후보들 중에서 옵션(2개 이상 가능) 모두 만족하는 row 선택
+function pickBestNaverGoods(goodsList, optionInfo) {
+  if (!goodsList || goodsList.length === 0) return null;
+
+  const orderTokens = optionTokens(optionInfo);
+
+  // 옵션이 있는 주문이면 "모든 옵션 토큰"을 만족하는 row를 우선 선택
+  if (orderTokens.length > 0) {
+    // 1) 공통 품목 파일의 '옵션' 컬럼에서 완전 매칭
+    let hit = goodsList.find(gr => {
+      const gTokens = optionTokens(gr["옵션"]);
+      return gTokens.length > 0 && orderTokens.every(t => gTokens.includes(t));
+    });
+    if (hit) return hit;
+
+    // 2) 옵션 컬럼이 비어있는 경우: '품목명'에 토큰이 모두 포함되는지로 매칭
+    hit = goodsList.find(gr => nameIncludesAllTokens(gr["품목명"], orderTokens));
+    if (hit) return hit;
+
+    // 3) 후보가 1개면 그걸 사용
+    if (goodsList.length === 1) return goodsList[0];
+
+    return null;
+  }
+
+  // 옵션이 없는 주문이면: 옵션 컬럼이 비어있는 row 우선
+  let hit = goodsList.find(gr => optionTokens(gr["옵션"]).length === 0);
+  if (hit) return hit;
+
+  if (goodsList.length === 1) return goodsList[0];
+  return null;
 }
 </script>
 </body>
