@@ -499,31 +499,34 @@ if (phone2 && !String(phone2).trim().startsWith("0")) {
     }
   }
 
-  // 품목명 규칙
-  let itemName = baseName;
+// 품목명 규칙
+let itemName = baseName;
 
-  // ✅ 오피스디포: goods 오피스디포 컬럼 값이 있으면 지정 포맷으로 변경
-  if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
-    itemName = `${baseName} 오피스디포`;
-    return {
-      "받는분성명": receiver,
-      "받는분주소(전체, 분할)": addr,
-      "받는분전화번호": phone1,
-      "받는분기타연락처": phone2,
+// ✅ 오피스디포: goods 오피스디포 컬럼 값이 있으면 지정 포맷으로 변경
+if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
+  const odVal = String(vendorTag).trim(); // ✅ 오피스디포 컬럼 값
 
-      "품목명": `${itemName} - ${qty}EA`,   // ← 요청한 형식 그대로: "품목명 + '오피스디포' + - 주문수량EA"
-      "박스수량": boxQty,
-      "기본운임": fare,
-      "운임구분": "",
+  itemName = `${baseName} ${odVal}`;      // ✅ "오피스디포" 문자열이 아니라 컬럼 값이 붙음
 
-      "보내는분성명": senderName,
-      "보내는분주소(전체, 분할)": SENDER_ADDR,
-      "보내는분전화번호": SENDER_PHONE,
+  return {
+    "받는분성명": receiver,
+    "받는분주소(전체, 분할)": addr,
+    "받는분전화번호": phone1,
+    "받는분기타연락처": phone2,
 
-      "배송메세지1": memo,
-      "주문번호": orderNo
-    };
-  }
+    "품목명": `${itemName} - ${qty}EA`,   // 예: "코팅기 ZWL - 1EA"
+    "박스수량": boxQty,
+    "기본운임": fare,
+    "운임구분": "",
+
+    "보내는분성명": senderName,
+    "보내는분주소(전체, 분할)": SENDER_ADDR,
+    "보내는분전화번호": SENDER_PHONE,
+
+    "배송메세지1": memo,
+    "주문번호": orderNo
+  };
+}
 
   // 알파: vendorTag(알파 컬럼) 부착(기존 유지)
   if (mode === "alpha" && vendorTag && vendorTag.trim() !== "") {
