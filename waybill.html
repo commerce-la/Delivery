@@ -458,22 +458,26 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode) {
     purchaser = (r["발주처"] || "").toString().trim();
   }
 
-  // ✅ 1차 보정: 둘 다 비면 주문자 연락처로(기존 유지)
-  if (!phone1 && !phone2) {
-    phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || "").toString().trim();
-    phone2 = (r["주문자 휴대전화"] || "").toString().trim();
-  } else if (!phone1) {
-    phone1 = phone2;
-  }
+// ✅ 1차 보정: 둘 다 비면 주문자 연락처로
+if (!phone1 && !phone2) {
+  phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || "").toString().trim();
+  phone2 = (r["주문자 휴대전화"] || "").toString().trim();
+} else if (!phone1) {
+  phone1 = phone2;
+}
 
-  // ✅ 새 규칙: phone1이 0으로 시작하지 않으면 phone2를 phone1로 기재
-  // (phone2가 비어있으면 그대로 유지)
-  if (phone1 && !String(phone1).trim().startsWith("0") && phone2) {
-    const prev1 = phone1;
-    phone1 = phone2;
-    // 중복 방지: 기존 phone1을 phone2로 남기되 같으면 비움
-    phone2 = (normalizePhone(prev1) === normalizePhone(phone1)) ? "" : prev1;
-  }
+// ✅ phone1이 0으로 시작하지 않으면 phone2를 phone1로 승격
+if (phone1 && !String(phone1).trim().startsWith("0") && phone2) {
+  const prev1 = phone1;
+  phone1 = phone2;
+  phone2 = (normalizePhone(prev1) === normalizePhone(phone1)) ? "" : prev1;
+}
+
+// ✅ NEW 규칙:
+// 받는분기타연락처(phone2)가 0으로 시작하지 않으면 공란 처리
+if (phone2 && !String(phone2).trim().startsWith("0")) {
+  phone2 = "";
+}
 
   // 보내는분성명
   let senderName = "";
