@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Waybill 변환 (알파/네이버/오피스디포)</title>
+  <title>Waybill 변환 (알파/네이버/오피스디포/밸류포인트)</title>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
@@ -38,7 +38,7 @@
 
 <body>
 <main>
-  <h1>Waybill 변환 (알파/네이버/오피스디포)</h1>
+  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트)</h1>
   <p>
     공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
     (제외) 네이버: 위킵 / 공통: 주문량=0 / 금액&lt;1 / 품목명에 [단종]
@@ -51,6 +51,7 @@
       <option value="alpha">알파</option>
       <option value="naver">네이버</option>
       <option value="office">오피스디포</option>
+      <option value="valuepoint">밸류포인트</option>
     </select>
 
     <label style="margin-top:16px;">1. 공통 품목 파일 업로드</label>
@@ -87,9 +88,11 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-let goodsMap = new Map(); // 코드 -> goods row (알파/오피스 공통)
 
-// ✅ 네이버 전용: "네이버 상품코드"(=주문파일 상품번호) -> goods rows[]
+// 공통 코드 -> goods row (알파/오피스/밸류포인트)
+let goodsMap = new Map();
+
+// 네이버 전용: "네이버 상품코드"(=주문파일 상품번호) -> goods rows[]
 let goodsNaverListMap = new Map();
 
 const vendorEl   = document.getElementById("vendor");
@@ -117,8 +120,8 @@ vendorEl.addEventListener("change", async () => {
 ================================ */
 goodsFileEl.addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
-  goodsMap.clear();
   goodsRows = [];
+  goodsMap.clear();
   goodsNaverListMap.clear();
 
   if (!f) { setStatus("품목 파일을 선택해 주세요."); updateBtn(); return; }
@@ -128,14 +131,14 @@ goodsFileEl.addEventListener("change", async (e) => {
     goodsRows = await readExcelFirstSheet(f);
 
     for (const r of goodsRows) {
-      // (기존) 공통 코드 매핑
+      // 공통 코드 매핑 (알파/오피스/밸류포인트 포함)
       const codeCandidates = collectGoodsCodes(r);
       for (const c of codeCandidates) {
         const key = normCode(c);
         if (key) goodsMap.set(key, r);
       }
 
-      // ✅ 네이버 전용: 네이버 상품코드로 row 리스트 저장 (옵션은 pickBestNaverGoods에서 비교)
+      // 네이버 전용 매핑
       const naverCodes = splitCodes(r["네이버 상품코드"]);
       for (const c of naverCodes) {
         const code = normCode(c);
@@ -184,11 +187,15 @@ async function loadOrderFile(file) {
     if (vendor === "naver") {
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
-      // 알파/오피스디포(품목별 현황) → 첫 시트
+      // 알파/오피스디포/밸류포인트(품목별 현황) → 첫 시트
       orderRows = await readExcelFirstSheet(file);
     }
 
-    const vendorName = vendor === "naver" ? "네이버" : (vendor === "office" ? "오피스디포" : "알파");
+    const vendorName =
+      vendor === "naver" ? "네이버" :
+      vendor === "office" ? "오피스디포" :
+      vendor === "valuepoint" ? "밸류포인트" : "알파";
+
     setStatus(`주문 파일 로드 완료\n행 수: ${orderRows.length}\n(업체: ${vendorName})`);
     showPreview(orderRows, "주문 파일 미리보기");
   } catch (err) {
@@ -199,7 +206,8 @@ async function loadOrderFile(file) {
 
 function updateBtn() {
   const vendor = vendorEl.value;
-  convertBtn.disabled = !(vendor && goodsRows.length > 0 && orderRows.length > 0);
+  const hasGoods = vendor === "naver" ? (goodsNaverListMap.size > 0) : (goodsMap.size > 0);
+  convertBtn.disabled = !(vendor && hasGoods && orderRows.length > 0);
 }
 
 /* ===============================
@@ -214,6 +222,7 @@ convertBtn.addEventListener("click", () => {
     let result;
     if (vendor === "naver") result = buildWaybillNaver(orderRows);
     else if (vendor === "office") result = buildWaybillOffice(orderRows);
+    else if (vendor === "valuepoint") result = buildWaybillValuePoint(orderRows);
     else result = buildWaybillAlpha(orderRows);
 
     // ✅ 중복 컬럼 채우기(내부필드 제거 포함)
@@ -307,9 +316,6 @@ function buildWaybillAlpha(rows) {
 
 /* ===============================
    네이버 변환
-   - 주문: 상품번호 + 옵션정보(2개 이상 가능)
-   - 품목: 네이버 상품코드 + 옵션(또는 품목명에 옵션이 박혀있어도 매칭)
-   - goods["NAVER, 지마켓"] 값 있으면 품목명 뒤에 추가
 ================================ */
 function buildWaybillNaver(rows) {
   const out = [];
@@ -393,7 +399,7 @@ function buildWaybillOffice(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      officeTag = (goods["오피스디포"] || "").toString().trim();
+      officeTag = (goods["오피스디포"] || "").toString().trim(); // ✅ "오피스디포" 글자X, 컬럼값만
     } else {
       missingCodes.add(code);
     }
@@ -411,6 +417,61 @@ function buildWaybillOffice(rows) {
   if (missingCodes.size > 0) {
     const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
     lines.push(`[주의] 품목 파일에서 못 찾은 상품코드: ${missingCodes.size}개`);
+    if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
+  }
+
+  return { rows: out, excluded, statsText: lines.join("\n") };
+}
+
+/* ===============================
+   밸류포인트 변환(품목별 현황)
+   - 매칭: 공통 품목 파일의 "밸류포인트 상품코드" ↔ 주문파일 "상품코드"
+   - 표기: 공통 품목 파일의 "밸류포인트" 컬럼값(문자열)만 품목명에 붙임 (밸류포인트 글자 X)
+================================ */
+function buildWaybillValuePoint(rows) {
+  const out = [];
+  const excluded = [];
+  const missingCodes = new Set();
+
+  for (const r of rows) {
+    const orderQty = toNum(r["주문량"]);
+    const amt = pickAmount(r);
+
+    const code = normCode(r["상품코드"]);
+    const goods = goodsMap.get(code);
+
+    const baseName = goods ? (goods["품목명"] || "").toString().trim()
+                           : (r["상품명"] || "").toString().trim();
+
+    const receiverName = (r["수령자명"] || "").toString().trim();
+    const orderNo = (r["주문번호"] || "").toString().trim();
+
+    if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, code, baseName, orderNo)); continue; }
+    if (amt < 1)   { excluded.push(makeExcludeRow("금액<1", receiverName, code, baseName, orderNo)); continue; }
+    if (baseName.includes("[단종]")) { excluded.push(makeExcludeRow("[단종]", receiverName, code, baseName, orderNo)); continue; }
+
+    let carton = 0, fare = "", vpTag = "";
+    if (goods) {
+      carton = toNum(goods["최대수량"]);
+      fare = (goods["최대운임"] || "").toString().trim();
+      vpTag = (goods["밸류포인트"] || "").toString().trim(); // ✅ "밸류포인트" 글자X, 컬럼값만
+    } else {
+      missingCodes.add(code);
+    }
+
+    const units = toNum(r["입수"]);
+    const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
+    const totalQty = isSpecial ? orderQty : (units * orderQty);
+
+    splitAndPush(out, r, baseName, vpTag, totalQty, carton, fare, "valuepoint");
+  }
+
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
+
+  const lines = [];
+  if (missingCodes.size > 0) {
+    const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
+    lines.push(`[주의] 품목 파일에서 못 찾은 밸류포인트 상품코드: ${missingCodes.size}개`);
     if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
   }
 
@@ -459,7 +520,7 @@ function splitAndPush(out, r, baseName, vendorTag, totalQty, carton, fare, mode)
 
 /* ===============================
    waybill row 생성
-   ✅ "중복" 컬럼을 맨 앞에 추가
+   ✅ "중복" 컬럼 맨 앞
    ✅ 내부 계산용 __qty, __carton, __dupKey 저장(나중에 제거)
 ================================ */
 function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonSize) {
@@ -473,7 +534,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     memo = (firstNonEmpty(r, ["배송메세지", "배송메시지", "배송요청사항", "요청사항"]) || "").toString().trim();
     orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
   } else {
-    // 알파/오피스디포(품목별 현황) 공통 구조
+    // 알파/오피스디포/밸류포인트(품목별 현황) 공통 구조
     receiver = (r["수령자명"] || "").toString().trim();
     addr = (r["수령자 주소"] || "").toString().trim();
     phone1 = (r["수령자 전화번호"] || "").toString().trim();
@@ -508,13 +569,13 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   if (mode === "naver") {
     senderName = "네이버";
   } else if (mode === "office") {
-    // ✅ 오피스디포 주문에서 수령자/발주처가 모두 '물류센터'면 '라미에이스'
-    if (purchaser === "물류센터" && receiver === "물류센터") {
-      senderName = "라미에이스";
-    } else {
-      senderName = "오피스디포";
-    }
+    // ✅ 오피스디포 주문파일: 수령자명=물류센터 & 발주처=물류센터면 라미에이스
+    if (purchaser === "물류센터" && receiver === "물류센터") senderName = "라미에이스";
+    else senderName = "오피스디포";
+  } else if (mode === "valuepoint") {
+    senderName = "밸류포인트";
   } else {
+    // 알파
     if (purchaser === "안성물류" && receiver === "안성물류") {
       senderName = "라미에이스";
     } else {
@@ -533,10 +594,10 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   const dupKey = `${receiver}|${addr}|${phone1}`;
 
-  // ✅ 오피스디포: goods 오피스디포 컬럼 값이 있으면 품목명에 컬럼 값 반영
+  // ✅ 오피스디포: "오피스디포" 글자X, 컬럼값만 붙임 (값이 있을 때만)
   if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
     const odVal = String(vendorTag).trim();
-    itemName = `${baseName} ${odVal}`;
+    itemName = `${baseName} ${odVal}`.replace(/\s+/g, " ").trim();
 
     return {
       "중복": "",
@@ -563,19 +624,24 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     };
   }
 
-  // ✅ 네이버: goods의 "NAVER, 지마켓" 값이 있으면 품목명에 붙임
+  // ✅ 밸류포인트: "밸류포인트" 글자X, 컬럼값만 붙임 (값이 있을 때만)
+  if (mode === "valuepoint" && vendorTag && String(vendorTag).trim() !== "") {
+    const vpVal = String(vendorTag).trim();
+    itemName = `${baseName} ${vpVal}`.replace(/\s+/g, " ").trim();
+  }
+
+  // ✅ 네이버: goods["NAVER, 지마켓"] 값이 있으면 품목명에 붙임
   if (mode === "naver" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // 알파: vendorTag(알파 컬럼) 부착(기존 유지)
+  // ✅ 알파: goods["알파"] 값이 있으면 품목명에 붙임
   if (mode === "alpha" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // 기본 출력
   return {
     "중복": "",
     "받는분성명": receiver,
@@ -602,9 +668,12 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 }
 
 /* ===============================
-   ✅ 중복 컬럼 채우기
-   - (받는분성명 + 받는분주소 + 받는분전화번호) 동일 그룹이 2행 이상이면
-   - qty !== carton(최대수량) 인 행 개수를 세서 "중복" 컬럼에 기재
+   ✅ 중복 컬럼 채우기 (최종 규칙)
+   - 동일 (받는분성명+주소+전화) 그룹이 2행 이상일 때만 처리
+   - notFullCount = (qty !== carton) 인 행 개수
+   - ✅ qty===carton(최대수량 행)은 중복값 공란
+   - ✅ notFullCount가 1이면 표기 생략(전부 공란)
+   - ✅ notFullCount가 2 이상이면 "최대수량이 아닌 행"에만 notFullCount 표기
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -613,19 +682,15 @@ function applyDuplicateColumn(rows) {
     const key =
       row.__dupKey ??
       `${row["받는분성명"] || ""}|${row["받는분주소(전체, 분할)"] || ""}|${row["받는분전화번호"] || ""}`;
-
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
 
   for (const list of groups.values()) {
-    // 기본: 공란
     for (const row of list) row["중복"] = "";
 
-    // 그룹이 2개 이상일 때만 중복 계산
     if (list.length < 2) continue;
 
-    // 최대수량(carton)과 수량(qty) 비교해서 "최대수량이 아닌 행"만 카운트
     const notFullRows = list.filter(row => {
       const q = Number(row.__qty ?? 0);
       const c = Number(row.__carton ?? 0);
@@ -634,16 +699,13 @@ function applyDuplicateColumn(rows) {
 
     const notFullCount = notFullRows.length;
 
-    // ✅ 중복 수량이 1이면 생략(전부 공란 유지)
+    // ✅ 1이면 생략
     if (notFullCount <= 1) continue;
 
-    // ✅ 2 이상이면: "최대수량이 아닌 행"에만 표기 (최대수량 행은 공란 유지)
-    for (const row of notFullRows) {
-      row["중복"] = notFullCount;
-    }
+    // ✅ 2 이상: 최대수량 아닌 행들에만 표기
+    for (const row of notFullRows) row["중복"] = notFullCount;
   }
 
-  // 내부필드 제거(엑셀 컬럼으로 안 나오게)
   for (const row of rows) {
     delete row.__qty;
     delete row.__carton;
@@ -664,12 +726,14 @@ function pickAmount(r) {
 
 /* ===============================
    공통 품목 파일 코드 수집
+   ✅ 밸류포인트 상품코드 포함
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
   const preferred = [
     "알파 상품코드",
     "네이버 상품코드",
+    "밸류포인트 상품코드",  // ✅ 추가
     "네이버 상품번호",
     "상품번호",
     "상품코드",
@@ -798,7 +862,6 @@ function normCode(x) {
   return s;
 }
 
-/* ✅ 숫자 파싱 강화 */
 function toNum(x) {
   if (x === null || x === undefined) return 0;
   if (typeof x === "number") return Number.isFinite(x) ? x : 0;
@@ -839,7 +902,6 @@ function escapeHtml(v) {
     .replace(/"/g, "&quot;");
 }
 
-// ✅ 공통 품목 파일에서 코드 셀이 "1,2,3" 형태일 수 있어 분해
 function splitCodes(v) {
   if (v === null || v === undefined) return [];
   const s = String(v).trim();
@@ -848,12 +910,8 @@ function splitCodes(v) {
 }
 
 /* ===============================
-   ✅ 네이버 옵션 매칭 (2옵션 이상 대응)
+   네이버 옵션 매칭 (2옵션 이상 대응)
 ================================ */
-
-// 옵션정보/옵션을 토큰 배열로 변환
-// - "규격: 18mm / 색상: 검정" => ["18", "검정"]
-// - "18mm, 검정" => ["18", "검정"]
 function optionTokens(v) {
   let s = (v ?? "").toString().replace(/\u00A0/g, " ").trim();
   if (!s || s.toLowerCase() === "nan") return [];
@@ -865,21 +923,17 @@ function optionTokens(v) {
     const m = p.match(/[:=]\s*(.+)$/);
     let val = (m ? m[1] : p).trim();
     if (!val) continue;
-
-    // 콤마 분리 지원: "18mm, 검정"
     tokens.push(...val.split(/[,，]/).map(x => x.trim()).filter(Boolean));
   }
 
   tokens = tokens
     .map(t => t.replace(/\s+/g, " ").trim())
     .map(t => {
-      // "18mm" -> "18"
       const mm = t.match(/^(\d+)\s*mm$/i);
       return mm ? mm[1] : t;
     })
     .filter(Boolean);
 
-  // 중복 제거(순서 유지)
   const seen = new Set();
   const out = [];
   for (const t of tokens) {
@@ -888,8 +942,6 @@ function optionTokens(v) {
   return out;
 }
 
-// 품목명에 옵션 토큰들이 모두 들어있는지 확인
-// 숫자 토큰은 "18" <-> "18mm" 둘 다 허용
 function nameIncludesAllTokens(name, tokens) {
   const n = (name ?? "").toString();
   return tokens.every(t => {
@@ -899,32 +951,25 @@ function nameIncludesAllTokens(name, tokens) {
   });
 }
 
-// 네이버 goods 후보들 중에서 옵션(2개 이상 가능) 모두 만족하는 row 선택
 function pickBestNaverGoods(goodsList, optionInfo) {
   if (!goodsList || goodsList.length === 0) return null;
 
   const orderTokens = optionTokens(optionInfo);
 
-  // 옵션이 있는 주문이면 "모든 옵션 토큰"을 만족하는 row 우선
   if (orderTokens.length > 0) {
-    // 1) 공통 품목 파일의 '옵션' 컬럼에서 완전 매칭
     let hit = goodsList.find(gr => {
       const gTokens = optionTokens(gr["옵션"]);
       return gTokens.length > 0 && orderTokens.every(t => gTokens.includes(t));
     });
     if (hit) return hit;
 
-    // 2) 옵션 컬럼이 비어있는 경우: '품목명'에 토큰이 모두 포함되는지로 매칭
     hit = goodsList.find(gr => nameIncludesAllTokens(gr["품목명"], orderTokens));
     if (hit) return hit;
 
-    // 3) 후보가 1개면 그걸 사용
     if (goodsList.length === 1) return goodsList[0];
-
     return null;
   }
 
-  // 옵션이 없는 주문이면: 옵션 컬럼이 비어있는 row 우선
   let hit = goodsList.find(gr => optionTokens(gr["옵션"]).length === 0);
   if (hit) return hit;
 
