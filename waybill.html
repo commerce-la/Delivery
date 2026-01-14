@@ -545,12 +545,18 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   }
 
   // ✅ 받는분 성명 특수 치환(밸류포인트)
-  const originalReceiver = receiver;
-  const isValuePointSpecialReceiver =
-    mode === "valuepoint" && (originalReceiver === "남궁현식" || originalReceiver === "김남석담당");
-  if (isValuePointSpecialReceiver) {
-    receiver = "밸류포인트";
-  }
+// ✅ 받는분 성명 특수 치환(밸류포인트)
+// - 수령자명이 "남궁현식" 또는 "김남석담당"이 포함되면 적용 (콤마/공백/추가문구 대응)
+const originalReceiver = receiver;
+const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
+
+const isValuePointSpecialReceiver =
+  mode === "valuepoint" &&
+  (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
+
+if (isValuePointSpecialReceiver) {
+  receiver = "밸류포인트";
+}
 
   // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
   if (!phone1 && !phone2) {
@@ -579,8 +585,9 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   } else if (mode === "office") {
     if (purchaser === "물류센터" && originalReceiver === "물류센터") senderName = "라미에이스";
     else senderName = "오피스디포";
-  } else if (mode === "valuepoint") {
-    senderName = "밸류포인트";
+} else if (mode === "valuepoint") {
+  senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
+}
     // ✅ 밸류포인트 특수 수령자면 보내는분성명=라미에이스
     if (isValuePointSpecialReceiver) senderName = "라미에이스";
   } else {
