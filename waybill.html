@@ -611,6 +611,17 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     purchaser = (r["발주처"] || "").toString().trim();
   }
 
+  // ✅ 오피스넥스 물류센터 규칙(부분 공백/문구 대응)
+  const purchaserNorm = String(purchaser || "").replace(/\s+/g, "");
+  const isOfficeNexCenter =
+    mode === "officenex" &&
+    purchaserNorm.includes("넥스물류센터") &&
+    receiverNorm.includes("넥스물류센터");
+
+  if (isOfficeNexCenter) {
+    receiver = "오피스넥스";
+  }
+
   // ✅ 밸류포인트 특수 수령자 판별(부분일치 + 공백제거)
   const originalReceiver = receiver;
   const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
@@ -653,7 +664,8 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   } else if (mode === "valuepoint") {
     senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
   } else if (mode === "officenex") {
-    senderName = "오피스넥스";
+    senderName = isOfficeNexCenter ? "라미에이스" : "오피스넥스";
+  }  
   } else {
     // 알파
     if (purchaser === "안성물류" && originalReceiver === "안성물류") {
@@ -1073,5 +1085,3 @@ function pickBestNaverGoods(goodsList, optionInfo) {
 </script>
 </body>
 </html>
-
-추가로, 공통 품목 파일에 나중에 `오피스넥스`(표기용) 컬럼이 생기면 **그 값만** 품목명 뒤에 붙도록(“오피스넥스”라는 글자 자체는 안 붙
