@@ -610,27 +610,46 @@ function applyDuplicateColumn(rows) {
   const groups = new Map();
 
   for (const row of rows) {
-    const key = row.__dupKey ?? `${row["받는분성명"]||""}|${row["받는분주소(전체, 분할)"]||""}|${row["받는분전화번호"]||""}`;
+    const key =
+      row.__dupKey ??
+      `${row["받는분성명"] || ""}|${row["받는분주소(전체, 분할)"] || ""}|${row["받는분전화번호"] || ""}`;
+
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
 
   for (const list of groups.values()) {
-    if (list.length >= 2) {
-      let notFullCount = 0;
+    // 기본: 공란
+    for (const row of list) row["중복"] = "";
 
-      for (const row of list) {
-        const q = Number(row.__qty ?? 0);
-        const c = Number(row.__carton ?? 0);
-        // 최대수량이 0이면 판단 불가 → 카운트 제외
-        if (c > 0 && q !== c) notFullCount++;
-      }
+    // 그룹이 2개 이상일 때만 중복 계산
+    if (list.length < 2) continue;
 
-      for (const row of list) row["중복"] = notFullCount; // 0도 표기
-    } else {
-      list[0]["중복"] = "";
+    // 최대수량(carton)과 수량(qty) 비교해서 "최대수량이 아닌 행"만 카운트
+    const notFullRows = list.filter(row => {
+      const q = Number(row.__qty ?? 0);
+      const c = Number(row.__carton ?? 0);
+      return c > 0 && q !== c;
+    });
+
+    const notFullCount = notFullRows.length;
+
+    // ✅ 중복 수량이 1이면 생략(전부 공란 유지)
+    if (notFullCount <= 1) continue;
+
+    // ✅ 2 이상이면: "최대수량이 아닌 행"에만 표기 (최대수량 행은 공란 유지)
+    for (const row of notFullRows) {
+      row["중복"] = notFullCount;
     }
   }
+
+  // 내부필드 제거(엑셀 컬럼으로 안 나오게)
+  for (const row of rows) {
+    delete row.__qty;
+    delete row.__carton;
+    delete row.__dupKey;
+  }
+}
 
   // 내부필드 제거(엑셀 컬럼으로 안 나오게)
   for (const row of rows) {
