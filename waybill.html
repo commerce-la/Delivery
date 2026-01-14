@@ -659,6 +659,14 @@ function applyDuplicateColumn(rows) {
   }
 }
 
+  // 내부필드 제거(엑셀 컬럼으로 안 나오게)
+  for (const row of rows) {
+    delete row.__qty;
+    delete row.__carton;
+    delete row.__dupKey;
+  }
+}
+
 /* ===============================
    금액 후보 선택
 ================================ */
