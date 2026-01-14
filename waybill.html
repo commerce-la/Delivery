@@ -88,12 +88,8 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-
-// 공통 코드 -> goods row (알파/오피스/밸류포인트)
-let goodsMap = new Map();
-
-// 네이버 전용: "네이버 상품코드"(=주문파일 상품번호) -> goods rows[]
-let goodsNaverListMap = new Map();
+let goodsMap = new Map();          // 공통 코드 -> goods row (알파/오피스/밸류포인트)
+let goodsNaverListMap = new Map(); // 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
 
 const vendorEl   = document.getElementById("vendor");
 const goodsFileEl = document.getElementById("goodsFile");
@@ -131,7 +127,7 @@ goodsFileEl.addEventListener("change", async (e) => {
     goodsRows = await readExcelFirstSheet(f);
 
     for (const r of goodsRows) {
-      // 공통 코드 매핑 (알파/오피스/밸류포인트 포함)
+      // 공통 코드 매핑
       const codeCandidates = collectGoodsCodes(r);
       for (const c of codeCandidates) {
         const key = normCode(c);
@@ -187,7 +183,7 @@ async function loadOrderFile(file) {
     if (vendor === "naver") {
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
-      // 알파/오피스디포/밸류포인트(품목별 현황) → 첫 시트
+      // 알파/오피스디포/밸류포인트: 첫 시트(품목별 현황)
       orderRows = await readExcelFirstSheet(file);
     }
 
@@ -425,8 +421,8 @@ function buildWaybillOffice(rows) {
 
 /* ===============================
    밸류포인트 변환(품목별 현황)
-   - 매칭: 공통 품목 파일의 "밸류포인트 상품코드" ↔ 주문파일 "상품코드"
-   - 표기: 공통 품목 파일의 "밸류포인트" 컬럼값(문자열)만 품목명에 붙임 (밸류포인트 글자 X)
+   ✅ 추가 규칙:
+   - 입수=0 이면 1로 간주해서 계산
 ================================ */
 function buildWaybillValuePoint(rows) {
   const out = [];
@@ -459,7 +455,10 @@ function buildWaybillValuePoint(rows) {
       missingCodes.add(code);
     }
 
-    const units = toNum(r["입수"]);
+    // ✅ 밸류포인트: 입수 0이면 1로 변경
+    let units = toNum(r["입수"]);
+    if (!units || units <= 0) units = 1;
+
     const isSpecial = baseName.includes("시트지") || baseName.includes("아트메이트");
     const totalQty = isSpecial ? orderQty : (units * orderQty);
 
@@ -520,8 +519,10 @@ function splitAndPush(out, r, baseName, vendorTag, totalQty, carton, fare, mode)
 
 /* ===============================
    waybill row 생성
-   ✅ "중복" 컬럼 맨 앞
-   ✅ 내부 계산용 __qty, __carton, __dupKey 저장(나중에 제거)
+   ✅ 밸류포인트 추가 규칙:
+   - 수령자명이 "남궁현식" 또는 "김남석담당" 이면
+     받는분성명 = "밸류포인트"
+     보내는분성명 = "라미에이스"
 ================================ */
 function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonSize) {
   let receiver="", addr="", phone1="", phone2="", memo="", orderNo="", purchaser="";
@@ -534,7 +535,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     memo = (firstNonEmpty(r, ["배송메세지", "배송메시지", "배송요청사항", "요청사항"]) || "").toString().trim();
     orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
   } else {
-    // 알파/오피스디포/밸류포인트(품목별 현황) 공통 구조
     receiver = (r["수령자명"] || "").toString().trim();
     addr = (r["수령자 주소"] || "").toString().trim();
     phone1 = (r["수령자 전화번호"] || "").toString().trim();
@@ -542,6 +542,14 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     memo = (r["요청메모"] || "").toString().trim();
     orderNo = (r["주문번호"] || "").toString().trim();
     purchaser = (r["발주처"] || "").toString().trim();
+  }
+
+  // ✅ 받는분 성명 특수 치환(밸류포인트)
+  const originalReceiver = receiver;
+  const isValuePointSpecialReceiver =
+    mode === "valuepoint" && (originalReceiver === "남궁현식" || originalReceiver === "김남석담당");
+  if (isValuePointSpecialReceiver) {
+    receiver = "밸류포인트";
   }
 
   // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
@@ -569,20 +577,20 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   if (mode === "naver") {
     senderName = "네이버";
   } else if (mode === "office") {
-    // ✅ 오피스디포 주문파일: 수령자명=물류센터 & 발주처=물류센터면 라미에이스
-    if (purchaser === "물류센터" && receiver === "물류센터") senderName = "라미에이스";
+    if (purchaser === "물류센터" && originalReceiver === "물류센터") senderName = "라미에이스";
     else senderName = "오피스디포";
   } else if (mode === "valuepoint") {
     senderName = "밸류포인트";
+    // ✅ 밸류포인트 특수 수령자면 보내는분성명=라미에이스
+    if (isValuePointSpecialReceiver) senderName = "라미에이스";
   } else {
-    // 알파
-    if (purchaser === "안성물류" && receiver === "안성물류") {
+    if (purchaser === "안성물류" && originalReceiver === "안성물류") {
       senderName = "라미에이스";
     } else {
       const isSpecialStore =
         (purchaser === "동부이촌점" || purchaser === "본점") &&
-        receiver !== "" &&
-        receiver === purchaser;
+        originalReceiver !== "" &&
+        originalReceiver === purchaser;
 
       senderName = (purchaser === "안성물류") ? "알파 안성" : "";
       if (isSpecialStore) senderName = "라미에이스";
@@ -594,7 +602,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   const dupKey = `${receiver}|${addr}|${phone1}`;
 
-  // ✅ 오피스디포: "오피스디포" 글자X, 컬럼값만 붙임 (값이 있을 때만)
+  // ✅ 오피스디포: 컬럼값만 붙임 (값이 있을 때만) + 조기 return 유지
   if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
     const odVal = String(vendorTag).trim();
     itemName = `${baseName} ${odVal}`.replace(/\s+/g, " ").trim();
@@ -624,7 +632,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     };
   }
 
-  // ✅ 밸류포인트: "밸류포인트" 글자X, 컬럼값만 붙임 (값이 있을 때만)
+  // ✅ 밸류포인트: 컬럼값만 붙임 (값이 있을 때만)
   if (mode === "valuepoint" && vendorTag && String(vendorTag).trim() !== "") {
     const vpVal = String(vendorTag).trim();
     itemName = `${baseName} ${vpVal}`.replace(/\s+/g, " ").trim();
@@ -669,11 +677,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
 /* ===============================
    ✅ 중복 컬럼 채우기 (최종 규칙)
-   - 동일 (받는분성명+주소+전화) 그룹이 2행 이상일 때만 처리
-   - notFullCount = (qty !== carton) 인 행 개수
-   - ✅ qty===carton(최대수량 행)은 중복값 공란
-   - ✅ notFullCount가 1이면 표기 생략(전부 공란)
-   - ✅ notFullCount가 2 이상이면 "최대수량이 아닌 행"에만 notFullCount 표기
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -698,12 +701,9 @@ function applyDuplicateColumn(rows) {
     });
 
     const notFullCount = notFullRows.length;
+    if (notFullCount <= 1) continue; // ✅ 1이면 생략
 
-    // ✅ 1이면 생략
-    if (notFullCount <= 1) continue;
-
-    // ✅ 2 이상: 최대수량 아닌 행들에만 표기
-    for (const row of notFullRows) row["중복"] = notFullCount;
+    for (const row of notFullRows) row["중복"] = notFullCount; // ✅ 최대수량 아닌 행만
   }
 
   for (const row of rows) {
@@ -726,14 +726,13 @@ function pickAmount(r) {
 
 /* ===============================
    공통 품목 파일 코드 수집
-   ✅ 밸류포인트 상품코드 포함
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
   const preferred = [
     "알파 상품코드",
     "네이버 상품코드",
-    "밸류포인트 상품코드",  // ✅ 추가
+    "밸류포인트 상품코드",
     "네이버 상품번호",
     "상품번호",
     "상품코드",
@@ -979,3 +978,4 @@ function pickBestNaverGoods(goodsList, optionInfo) {
 </script>
 </body>
 </html>
+```
