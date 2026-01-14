@@ -354,7 +354,7 @@ function buildWaybillNaver(rows) {
     splitAndPush(out, r, baseName, naverTag, orderQty, carton, fare, "naver");
   }
 
-  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(a["받는분성명"]||""),"ko"));
 
   const lines = [];
   if (missingCodes.size > 0) {
@@ -395,7 +395,7 @@ function buildWaybillOffice(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      officeTag = (goods["오피스디포"] || "").toString().trim(); // ✅ "오피스디포" 글자X, 컬럼값만
+      officeTag = (goods["오피스디포"] || "").toString().trim();
     } else {
       missingCodes.add(code);
     }
@@ -421,8 +421,8 @@ function buildWaybillOffice(rows) {
 
 /* ===============================
    밸류포인트 변환(품목별 현황)
-   ✅ 추가 규칙:
-   - 입수=0 이면 1로 간주해서 계산
+   ✅ 규칙:
+   - 입수=0 이면 1로 간주
 ================================ */
 function buildWaybillValuePoint(rows) {
   const out = [];
@@ -478,7 +478,7 @@ function buildWaybillValuePoint(rows) {
 }
 
 /* ===============================
-   네이버 수량 추출 (강화)
+   네이버 수량 추출
 ================================ */
 function pickNaverQty(r) {
   if (Object.prototype.hasOwnProperty.call(r, "수량")) return toNum(r["수량"]);
@@ -519,10 +519,10 @@ function splitAndPush(out, r, baseName, vendorTag, totalQty, carton, fare, mode)
 
 /* ===============================
    waybill row 생성
-   ✅ 밸류포인트 추가 규칙:
-   - 수령자명이 "남궁현식" 또는 "김남석담당" 이면
-     받는분성명 = "밸류포인트"
-     보내는분성명 = "라미에이스"
+   ✅ 밸류포인트 특수 규칙:
+   - 수령자명에 "남궁현식" 또는 "김남석담당" 포함 시
+     받는분성명 = 밸류포인트
+     보내는분성명 = 라미에이스
 ================================ */
 function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonSize) {
   let receiver="", addr="", phone1="", phone2="", memo="", orderNo="", purchaser="";
@@ -544,19 +544,16 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     purchaser = (r["발주처"] || "").toString().trim();
   }
 
-  // ✅ 받는분 성명 특수 치환(밸류포인트)
-// ✅ 받는분 성명 특수 치환(밸류포인트)
-// - 수령자명이 "남궁현식" 또는 "김남석담당"이 포함되면 적용 (콤마/공백/추가문구 대응)
-const originalReceiver = receiver;
-const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
+  // ✅ 밸류포인트 특수 수령자 판별(부분일치 + 공백제거)
+  const originalReceiver = receiver;
+  const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
+  const isValuePointSpecialReceiver =
+    mode === "valuepoint" &&
+    (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
 
-const isValuePointSpecialReceiver =
-  mode === "valuepoint" &&
-  (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
-
-if (isValuePointSpecialReceiver) {
-  receiver = "밸류포인트";
-}
+  if (isValuePointSpecialReceiver) {
+    receiver = "밸류포인트";
+  }
 
   // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
   if (!phone1 && !phone2) {
@@ -585,11 +582,8 @@ if (isValuePointSpecialReceiver) {
   } else if (mode === "office") {
     if (purchaser === "물류센터" && originalReceiver === "물류센터") senderName = "라미에이스";
     else senderName = "오피스디포";
-} else if (mode === "valuepoint") {
-  senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
-}
-    // ✅ 밸류포인트 특수 수령자면 보내는분성명=라미에이스
-    if (isValuePointSpecialReceiver) senderName = "라미에이스";
+  } else if (mode === "valuepoint") {
+    senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
   } else {
     if (purchaser === "안성물류" && originalReceiver === "안성물류") {
       senderName = "라미에이스";
@@ -609,7 +603,7 @@ if (isValuePointSpecialReceiver) {
 
   const dupKey = `${receiver}|${addr}|${phone1}`;
 
-  // ✅ 오피스디포: 컬럼값만 붙임 (값이 있을 때만) + 조기 return 유지
+  // ✅ 오피스디포: 컬럼값만 붙임(값 있을 때만) + 조기 return
   if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
     const odVal = String(vendorTag).trim();
     itemName = `${baseName} ${odVal}`.replace(/\s+/g, " ").trim();
@@ -639,19 +633,19 @@ if (isValuePointSpecialReceiver) {
     };
   }
 
-  // ✅ 밸류포인트: 컬럼값만 붙임 (값이 있을 때만)
+  // ✅ 밸류포인트: "밸류포인트" 글자X, 컬럼값만 붙임
   if (mode === "valuepoint" && vendorTag && String(vendorTag).trim() !== "") {
     const vpVal = String(vendorTag).trim();
     itemName = `${baseName} ${vpVal}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 네이버: goods["NAVER, 지마켓"] 값이 있으면 품목명에 붙임
+  // ✅ 네이버
   if (mode === "naver" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 알파: goods["알파"] 값이 있으면 품목명에 붙임
+  // ✅ 알파
   if (mode === "alpha" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
@@ -868,6 +862,7 @@ function normCode(x) {
   return s;
 }
 
+/* ✅ 숫자 파싱 강화 */
 function toNum(x) {
   if (x === null || x === undefined) return 0;
   if (typeof x === "number") return Number.isFinite(x) ? x : 0;
@@ -985,4 +980,4 @@ function pickBestNaverGoods(goodsList, optionInfo) {
 </script>
 </body>
 </html>
-```
+7
