@@ -38,7 +38,7 @@
 
 <body>
 <main>
-  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/)</h1>
+  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</h1>
   <p>
     공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
     (제외) 네이버: 위킵 / 공통: 주문량=0 / 금액&lt;1 / 품목명에 [단종]
@@ -54,7 +54,7 @@
       <option value="valuepoint">밸류포인트</option>
       <option value="officenex">오피스넥스</option>
       <option value="ebay">이베이(옥션/지마켓)</option>
-      <option value="dreamoffice"></option>
+      <option value="dreamoffice">드림오피스</option>
     </select>
 
     <label style="margin-top:16px;">1. 공통 품목 파일 업로드</label>
@@ -92,7 +92,7 @@ const SENDER_PHONE = "031-987-9495";
 let goodsRows = [];
 let orderRows = [];
 
-// 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스/ 등)
+// 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스/드림오피스 등)
 let goodsMap = new Map();
 
 // 네이버: 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
@@ -218,7 +218,7 @@ async function loadOrderFile(file) {
       vendor === "valuepoint" ? "밸류포인트" :
       vendor === "officenex" ? "오피스넥스" :
       vendor === "ebay" ? "이베이(옥션/지마켓)" :
-      vendor === "dreamoffice" ? "" : "알파";
+      vendor === "dreamoffice" ? "드림오피스" : "알파";
 
     setStatus(`주문 파일 로드 완료\n행 수: ${orderRows.length}\n(업체: ${vendorName})`);
     showPreview(orderRows, "주문 파일 미리보기");
@@ -386,7 +386,7 @@ function buildWaybillNaver(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      naverTag = getNaverEbayTagFromGoods(goods);
+      naverTag = getNaverEbayTagFromGoods(goods); // "NAVER, 이베이"
     } else {
       missingCodes.add(productNo);
     }
@@ -626,10 +626,10 @@ function buildWaybillEbay(rows) {
 }
 
 /* ===============================
-   ✅  변환 (첨부파일: 수주처리_상세현황)
-   - 주문파일 주요 컬럼(확인됨):
-     상품코드, 상품명, 수량, 합계, 발주번호, 배송처, 배송주소, 전화번호, 핸드폰, 주문메세지
-   - 공통품목: " 품목코드"로 매칭 (goodsMap에 포함)
+   ✅ 드림오피스 변환 (수주처리_상세현황)
+   - 주문파일 컬럼(확인): 발주번호, 상품코드, 상품명, 수량, 출고수량, 합계,
+                         출고메모, 배송처, 거래처명, 배송주소, 전화번호, 핸드폰, 주문메세지 등
+   - 공통품목: "드림오피스 품목코드"로 goodsMap 매칭
 ================================ */
 function buildWaybillDreamOffice(rows) {
   const out = [];
@@ -637,8 +637,11 @@ function buildWaybillDreamOffice(rows) {
   const missingCodes = new Set();
 
   for (const r of rows) {
-    const orderQty = toNum(r["수량"]);
-    const amt = pickAmount(r); // 합계 후보 포함
+    const qtyShip = toNum(r["출고수량"]);
+    const qtyOrd  = toNum(r["수량"]);
+    const orderQty = qtyShip > 0 ? qtyShip : qtyOrd;
+
+    const amt = pickAmount(r);
 
     const code = normCode(r["상품코드"]);
     const goods = goodsMap.get(code);
@@ -657,13 +660,12 @@ function buildWaybillDreamOffice(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      // (선택) 공통품목에  표기 컬럼이 생기면 여기서 붙일 수 있음
-      dreamTag = (goods[""] || "").toString().trim();
+      // (선택) 공통품목에 표기용 "드림오피스" 컬럼이 있으면 품목명에 붙음
+      dreamTag = (goods["드림오피스"] || "").toString().trim();
     } else {
       missingCodes.add(code);
     }
 
-    //  주문파일 수량은 최종 수량으로 간주
     splitAndPush(out, r, baseName, dreamTag, orderQty, carton, fare, "dreamoffice");
   }
 
@@ -672,7 +674,7 @@ function buildWaybillDreamOffice(rows) {
   const lines = [];
   if (missingCodes.size > 0) {
     const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
-    lines.push(`[주의] 품목 파일에서 못 찾은  상품코드: ${missingCodes.size}개`);
+    lines.push(`[주의] 품목 파일에서 못 찾은 드림오피스 상품코드: ${missingCodes.size}개`);
     if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
   }
 
@@ -740,7 +742,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     memo = (r["배송시 요구사항"] || r["배송요청사항"] || "").toString().trim();
     orderNo = (r["주문번호"] || r["주문번호(통합)"] || "").toString().trim();
   } else if (mode === "dreamoffice") {
-    // ✅  주문파일(수주처리_상세현황) 기반 매핑
     receiver = (r["배송처"] || r["거래처명"] || "").toString().trim();
     addr = (r["배송주소"] || "").toString().trim();
     phone1 = (r["핸드폰"] || "").toString().trim();
@@ -781,6 +782,11 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     purchaserNorm.includes("물류센터") &&
     receiverNorm.includes("물류센터");
 
+  // ✅ 드림오피스 가산물류: 받는분성명에 "드림오피스 가산물류" 포함이면 보내는분성명 라미에이스
+  const isDreamOfficeGasan =
+    mode === "dreamoffice" &&
+    receiverNorm.includes("드림오피스가산물류");
+
   // 1차 보정: 둘 다 비면 주문자 연락처로
   if (!phone1 && !phone2) {
     phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || r["구매자 전화번호"] || "").toString().trim();
@@ -812,15 +818,9 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
   } else if (mode === "officenex") {
     senderName = isOfficeNexCenter ? "라미에이스" : "오피스넥스";
-} else if (mode === "dreamoffice") {
-  const recvNorm = String(receiver || "").replace(/\s+/g, "");
-  // ✅ 받는분성명이 "(주)드림오피스 가산물류"면 라미에이스
-  if (recvNorm.includes("(주)드림오피스가산물류")) {
-    senderName = "라미에이스";
-  } else {
-    senderName = "드림오피스";
-  }
-}
+  } else if (mode === "dreamoffice") {
+    // ✅ 요청 반영
+    senderName = isDreamOfficeGasan ? "라미에이스" : "드림오피스";
   } else {
     if (purchaser === "안성물류" && originalReceiver === "안성물류") senderName = "라미에이스";
     else {
@@ -931,8 +931,8 @@ function applyDuplicateColumn(rows) {
     });
 
     const notFullCount = notFullRows.length;
-    if (notFullCount <= 1) continue;
-    for (const row of notFullRows) row["중복"] = notFullCount;
+    if (notFullCount <= 1) continue; // ✅ 1이면 생략
+    for (const row of notFullRows) row["중복"] = notFullCount; // ✅ 최대수량행은 표기 안 함
   }
 
   for (const row of rows) {
@@ -972,7 +972,7 @@ function collectGoodsCodes(row) {
     "네이버 상품코드",
     "밸류포인트 상품코드",
     "오피스넥스 품목코드",
-    "드림오피스 품목코드",    // ✅ 추가
+    "드림오피스 품목코드",
     "옥션 상품코드",
     "지마켓 상품코드",
     "네이버 상품번호",
