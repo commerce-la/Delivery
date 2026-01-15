@@ -92,13 +92,13 @@ const SENDER_PHONE = "031-987-9495";
 let goodsRows = [];
 let orderRows = [];
 
-// 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스/기타)
+// 공통 코드 -> goods row
 let goodsMap = new Map();
 
-// 네이버 전용: 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
+// 네이버: 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
 let goodsNaverListMap = new Map();
 
-// ✅ 이베이 전용: 판매아이디에 따라 매핑 사용
+// 이베이: 옥션/지마켓 상품코드 매핑
 let goodsAuctionMap = new Map();  // 옥션 상품코드 -> goods row
 let goodsGmarketMap = new Map();  // 지마켓 상품코드 -> goods row
 
@@ -141,7 +141,7 @@ goodsFileEl.addEventListener("change", async (e) => {
     goodsRows = await readExcelFirstSheet(f);
 
     for (const r of goodsRows) {
-      // 1) 공통 코드 매핑(알파/오피스디포/밸류포인트/오피스넥스/기타)
+      // 1) 공통 코드 매핑
       const codeCandidates = collectGoodsCodes(r);
       for (const c of codeCandidates) {
         const key = normCode(c);
@@ -156,7 +156,7 @@ goodsFileEl.addEventListener("change", async (e) => {
         goodsNaverListMap.get(code).push(r);
       }
 
-      // 3) ✅ 이베이 전용 매핑 (옥션/지마켓 상품코드)
+      // 3) 이베이 전용 매핑 (옥션/지마켓 상품코드)
       for (const c of splitCodes(r["옥션 상품코드"])) {
         const code = normCode(c);
         if (code) goodsAuctionMap.set(code, r);
@@ -208,7 +208,7 @@ async function loadOrderFile(file) {
     if (vendor === "naver") {
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
-      // 알파/오피스디포/밸류포인트/오피스넥스/이베이 → 첫 시트
+      // 그 외 → 첫 시트
       orderRows = await readExcelFirstSheet(file);
     }
 
@@ -345,8 +345,7 @@ function buildWaybillAlpha(rows) {
 }
 
 /* ===============================
-   네이버 변환
-   ✅ 옵션은 매칭용만! waybill 품목명은 항상 goods["품목명"] 사용
+   네이버 변환 (옵션은 매칭용만)
 ================================ */
 function buildWaybillNaver(rows) {
   const out = [];
@@ -405,7 +404,7 @@ function buildWaybillNaver(rows) {
 }
 
 /* ===============================
-   오피스디포 변환(품목별 현황)
+   오피스디포 변환
 ================================ */
 function buildWaybillOffice(rows) {
   const out = [];
@@ -445,7 +444,7 @@ function buildWaybillOffice(rows) {
     splitAndPush(out, r, baseName, officeTag, totalQty, carton, fare, "office");
   }
 
-  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(a["받는분성명"]||""),"ko"));
 
   const lines = [];
   if (missingCodes.size > 0) {
@@ -458,7 +457,7 @@ function buildWaybillOffice(rows) {
 }
 
 /* ===============================
-   밸류포인트 변환(품목별 현황)
+   밸류포인트 변환
 ================================ */
 function buildWaybillValuePoint(rows) {
   const out = [];
@@ -513,7 +512,7 @@ function buildWaybillValuePoint(rows) {
 }
 
 /* ===============================
-   오피스넥스 변환(품목별 현황)
+   오피스넥스 변환
 ================================ */
 function buildWaybillOfficeNex(rows) {
   const out = [];
@@ -541,7 +540,7 @@ function buildWaybillOfficeNex(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      nexTag = (goods["오피스넥스"] || "").toString().trim(); // (선택) 표기용 컬럼
+      nexTag = (goods["오피스넥스"] || "").toString().trim();
     } else {
       missingCodes.add(code);
     }
@@ -569,8 +568,9 @@ function buildWaybillOfficeNex(rows) {
 
 /* ===============================
    ✅ 이베이 변환(옥션/지마켓)
-   - 판매아이디에 "옥션" 포함 → goodsAuctionMap(옥션 상품코드) 사용 + 보내는분성명 "옥션"
-   - 판매아이디에 "지마켓" 포함 → goodsGmarketMap(지마켓 상품코드) 사용 + 보내는분성명 "지마켓"
+   - 판매아이디에 "옥션" 포함 → 옥션 상품코드 매핑 + 보내는분성명 "옥션"
+   - 판매아이디에 "지마켓" 포함 → 지마켓 상품코드 매핑 + 보내는분성명 "지마켓"
+   - ✅ 품목명: 공통 품목 파일의 "이베이" 컬럼 값이 있으면 네이버처럼 품목명 뒤에 붙임
 ================================ */
 function buildWaybillEbay(rows) {
   const out = [];
@@ -581,10 +581,11 @@ function buildWaybillEbay(rows) {
     const sellerId = (r["판매아이디"] || "").toString().trim();
     const platform = detectEbayPlatform(sellerId); // "옥션" | "지마켓" | ""
 
-    const orderQty = toNum(r["수량"]);
+    // 이베이 주문파일 수량 컬럼 후보
+    const orderQty = toNum(firstNonEmpty(r, ["수량", "주문수량", "구매수량"]));
     const amt = pickAmount(r);
 
-    const productNo = normCode(r["상품번호"]);
+    const productNo = normCode(firstNonEmpty(r, ["상품번호", "상품코드", "판매상품번호", "옵션관리코드"]));
 
     let goods = null;
     if (platform === "옥션") goods = goodsAuctionMap.get(productNo) || null;
@@ -592,25 +593,26 @@ function buildWaybillEbay(rows) {
     else goods = goodsMap.get(productNo) || null;
 
     const baseName = goods ? (goods["품목명"] || "").toString().trim()
-                           : (r["상품명"] || "").toString().trim();
+                           : (r["상품명"] || r["상품명(옵션포함)"] || "").toString().trim();
 
-    const receiverName = (r["수령인명"] || "").toString().trim();
-    const orderNo = (r["주문번호"] || "").toString().trim();
+    const receiverName = (r["수령인명"] || r["수취인명"] || "").toString().trim();
+    const orderNo = (r["주문번호"] || r["주문번호(통합)"] || "").toString().trim();
 
     if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, productNo, baseName, orderNo)); continue; }
     if (amt < 1)   { excluded.push(makeExcludeRow("금액<1", receiverName, productNo, baseName, orderNo)); continue; }
     if (baseName.includes("[단종]")) { excluded.push(makeExcludeRow("[단종]", receiverName, productNo, baseName, orderNo)); continue; }
 
-    let carton = 0, fare = "";
+    let carton = 0, fare = "", ebayTag = "";
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
+      ebayTag = getEbayTagFromGoods(goods); // ✅ 공통 품목 파일 "이베이" 컬럼
     } else {
       missingCodes.add(`${platform || "이베이"}:${productNo}`);
     }
 
     // 이베이 파일은 입수 개념이 없으므로 주문수량 그대로
-    splitAndPush(out, r, baseName, "", orderQty, carton, fare, "ebay");
+    splitAndPush(out, r, baseName, ebayTag, orderQty, carton, fare, "ebay");
   }
 
   out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
@@ -679,14 +681,13 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     memo = (firstNonEmpty(r, ["배송메세지", "배송메시지", "배송요청사항", "요청사항"]) || "").toString().trim();
     orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
   } else if (mode === "ebay") {
-    receiver = (r["수령인명"] || "").toString().trim();
-    addr = (r["주소"] || "").toString().trim();
-    phone1 = (r["수령인 휴대폰"] || "").toString().trim();
-    phone2 = (r["수령인 전화번호"] || "").toString().trim();
-    memo = (r["배송시 요구사항"] || "").toString().trim();
-    orderNo = (r["주문번호"] || "").toString().trim();
+    receiver = (r["수령인명"] || r["수취인명"] || "").toString().trim();
+    addr = (r["주소"] || r["배송지주소"] || "").toString().trim();
+    phone1 = (r["수령인 휴대폰"] || r["수취인휴대폰"] || "").toString().trim();
+    phone2 = (r["수령인 전화번호"] || r["수취인전화번호"] || "").toString().trim();
+    memo = (r["배송시 요구사항"] || r["배송요청사항"] || "").toString().trim();
+    orderNo = (r["주문번호"] || r["주문번호(통합)"] || "").toString().trim();
   } else {
-    // 알파/오피스디포/밸류포인트/오피스넥스(품목별 현황)
     receiver = (r["수령자명"] || "").toString().trim();
     addr = (r["수령자 주소"] || "").toString().trim();
     phone1 = (r["수령자 전화번호"] || "").toString().trim();
@@ -699,14 +700,14 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   const originalReceiver = receiver;
   const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
 
-  // ✅ 밸류포인트 특수 수령자(부분일치)
+  // 밸류포인트 특수 수령자
   const isValuePointSpecialReceiver =
     mode === "valuepoint" &&
     (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
 
   if (isValuePointSpecialReceiver) receiver = "밸류포인트";
 
-  // ✅ 오피스넥스 물류센터 규칙(발주처=수령자=넥스 물류센터)
+  // 오피스넥스 물류센터 규칙
   const purchaserNorm = String(purchaser || "").replace(/\s+/g, "");
   const isOfficeNexCenter =
     mode === "officenex" &&
@@ -715,7 +716,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   if (isOfficeNexCenter) receiver = "오피스넥스";
 
-  // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
+  // 1차 보정: 둘 다 비면 주문자 연락처로
   if (!phone1 && !phone2) {
     phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || r["구매자 전화번호"] || "").toString().trim();
     phone2 = (r["주문자 휴대전화"] || r["구매자 휴대폰"] || "").toString().trim();
@@ -723,19 +724,18 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     phone1 = phone2;
   }
 
-  // ✅ phone1이 0으로 시작하지 않으면 phone2를 phone1로 승격
+  // phone1이 0으로 시작하지 않으면 phone2를 phone1로 승격
   if (phone1 && !String(phone1).trim().startsWith("0") && phone2) {
     const prev1 = phone1;
     phone1 = phone2;
     phone2 = (normalizePhone(prev1) === normalizePhone(phone1)) ? "" : prev1;
   }
 
-  // ✅ phone2가 0으로 시작하지 않으면 공란
+  // phone2가 0으로 시작하지 않으면 공란
   if (phone2 && !String(phone2).trim().startsWith("0")) phone2 = "";
 
   // 보내는분성명
   let senderName = "";
-
   if (mode === "naver") senderName = "네이버";
   else if (mode === "ebay") {
     const platform = detectEbayPlatform((r["판매아이디"] || "").toString());
@@ -764,7 +764,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
   let itemName = baseName;
   const dupKey = `${receiver}|${addr}|${phone1}`;
 
-  // ✅ 오피스디포: 컬럼값만 붙임(값 있을 때만) + 조기 return
+  // 오피스디포: 컬럼값만 붙임(값 있을 때만) + 조기 return
   if (mode === "office" && vendorTag && String(vendorTag).trim() !== "") {
     const odVal = String(vendorTag).trim();
     itemName = `${baseName} ${odVal}`.replace(/\s+/g, " ").trim();
@@ -790,25 +790,31 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     };
   }
 
-  // ✅ 밸류포인트: 컬럼값만 붙임
+  // 밸류포인트: 컬럼값만 붙임
   if (mode === "valuepoint" && vendorTag && String(vendorTag).trim() !== "") {
     const vpVal = String(vendorTag).trim();
     itemName = `${baseName} ${vpVal}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 오피스넥스: (선택) 표기 컬럼값만 붙임
+  // 오피스넥스: (선택) 표기 컬럼값만 붙임
   if (mode === "officenex" && vendorTag && String(vendorTag).trim() !== "") {
     const nxVal = String(vendorTag).trim();
     itemName = `${baseName} ${nxVal}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 네이버: naverTag 붙임
+  // 네이버: 컬럼값 붙임
   if (mode === "naver" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 알파: alphaTag 붙임
+  // ✅ 이베이: 공통품목 "이베이" 컬럼값 붙임 (네이버처럼)
+  if (mode === "ebay" && vendorTag && String(vendorTag).trim() !== "") {
+    const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
+    if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
+  }
+
+  // 알파: 컬럼값 붙임
   if (mode === "alpha" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
@@ -837,10 +843,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
 /* ===============================
    ✅ 중복 컬럼 채우기
-   - 받는분성명+주소+전화번호 동일 그룹이 2개 이상일 때만
-   - 그 중 "수량 != 최대수량(카톤)" 행의 개수를 중복 칼럼에 표기
-   - 단, 최대수량 행에는 표기 안함
-   - 중복수가 1이면 생략(공란)
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -877,7 +879,6 @@ function applyDuplicateColumn(rows) {
 
 /* ===============================
    금액 후보 선택
-   ✅ 이베이 대응: "판매금액"도 포함
 ================================ */
 function pickAmount(r) {
   const candidates = [
@@ -896,7 +897,6 @@ function pickAmount(r) {
 
 /* ===============================
    공통 품목 파일 코드 수집
-   ✅ 이베이용: "옥션 상품코드", "지마켓 상품코드" 추가
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
@@ -935,6 +935,14 @@ function firstNonEmpty(r, keys) {
     if (v !== undefined && v !== null && String(v).trim() !== "") return v;
   }
   return "";
+}
+
+// ✅ 공통 품목 파일의 이베이 컬럼 값 가져오기 (컬럼명 후보 지원)
+function getEbayTagFromGoods(goodsRow) {
+  if (!goodsRow) return "";
+  return (
+    firstNonEmpty(goodsRow, ["이베이", "EBAY", "이베이 태그", "이베이컬럼"])?.toString().trim() || ""
+  );
 }
 
 /* ===============================
@@ -1075,7 +1083,6 @@ function escapeHtml(v) {
     .replace(/"/g, "&quot;");
 }
 
-// ✅ 쉼표/개행/슬래시/파이프 등으로 분리
 function splitCodes(v) {
   if (v === null || v === undefined) return [];
   const s = String(v).trim();
