@@ -808,11 +808,37 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 이베이: 공통품목 "이베이" 컬럼값 붙임 (네이버처럼)
-  if (mode === "ebay" && vendorTag && String(vendorTag).trim() !== "") {
-    const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
-    if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
+// ✅ 공통 품목 파일의 "NAVER, 이베이" 컬럼 값 가져오기
+function getEbayTagFromGoods(goodsRow) {
+  if (!goodsRow) return "";
+
+  // 1) 정확한 컬럼명 우선
+  const direct = goodsRow["NAVER, 이베이"];
+  if (direct !== undefined && direct !== null && String(direct).trim() !== "") {
+    return String(direct).trim();
   }
+
+  // 2) 혹시 파일마다 공백/특수공백 차이가 있을 때 대비(키 정규화해서 찾기)
+  for (const k of Object.keys(goodsRow)) {
+    const nk = String(k)
+      .replace(/\u00A0/g, " ")
+      .replace(/\s+/g, "")
+      .trim()
+      .toUpperCase();
+
+    if (nk === "NAVER,이베이" || nk === "NAVER,EBAY") {
+      const v = goodsRow[k];
+      if (v !== undefined && v !== null && String(v).trim() !== "") {
+        return String(v).trim();
+      }
+    }
+  }
+
+  // 3) (예외 대비) 다른 이름으로 있을 가능성 fallback
+  return (
+    firstNonEmpty(goodsRow, ["이베이", "EBAY", "이베이 태그", "이베이컬럼"])?.toString().trim() || ""
+  );
+}
 
   // 알파: 컬럼값 붙임
   if (mode === "alpha" && vendorTag && String(vendorTag).trim() !== "") {
