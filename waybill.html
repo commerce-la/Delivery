@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -89,7 +90,7 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-let goodsMap = new Map();          // 공통 코드 -> goods row (알파/오피스/밸류포인트/오피스넥스)
+let goodsMap = new Map();          // 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스)
 let goodsNaverListMap = new Map(); // 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
 
 const vendorEl   = document.getElementById("vendor");
@@ -333,7 +334,7 @@ function buildWaybillNaver(rows) {
     let baseName = (r["상품명"] || "").toString().trim();
     if (goods) {
       const opt = (goods["옵션"] || "").toString().trim();
-      if (opt) baseName = normalizeOptionDisplay(opt); // ✅ 옵션 표시용 문자열
+      if (opt) baseName = normalizeOptionDisplay(opt);
       else baseName = (goods["품목명"] || "").toString().trim() || baseName;
     }
 
@@ -403,7 +404,7 @@ function buildWaybillOffice(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      officeTag = (goods["오피스디포"] || "").toString().trim(); // ✅ "오피스디포" 글자X, 컬럼값만
+      officeTag = (goods["오피스디포"] || "").toString().trim();
     } else {
       missingCodes.add(code);
     }
@@ -429,8 +430,6 @@ function buildWaybillOffice(rows) {
 
 /* ===============================
    밸류포인트 변환(품목별 현황)
-   ✅ 규칙:
-   - 입수=0 이면 1로 간주
 ================================ */
 function buildWaybillValuePoint(rows) {
   const out = [];
@@ -458,12 +457,11 @@ function buildWaybillValuePoint(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      vpTag = (goods["밸류포인트"] || "").toString().trim(); // ✅ "밸류포인트" 글자X, 컬럼값만
+      vpTag = (goods["밸류포인트"] || "").toString().trim();
     } else {
       missingCodes.add(code);
     }
 
-    // ✅ 밸류포인트: 입수 0이면 1로 변경
     let units = toNum(r["입수"]);
     if (!units || units <= 0) units = 1;
 
@@ -487,9 +485,7 @@ function buildWaybillValuePoint(rows) {
 
 /* ===============================
    오피스넥스 변환(품목별 현황)
-   ✅ 공통 품목 파일에 "오피스넥스 품목코드" 컬럼을 추가할 예정
-   - 매칭: goodsMap(오피스넥스 품목코드 값) ↔ 주문파일 "상품코드"
-   - 표기: (선택) goods["오피스넥스"] 컬럼이 생기면 그 값만 품목명 뒤에 붙임(문자열 "오피스넥스" X)
+   - 공통 품목 파일에 "오피스넥스 품목코드" 컬럼 추가 예정(collectGoodsCodes에 포함)
 ================================ */
 function buildWaybillOfficeNex(rows) {
   const out = [];
@@ -500,7 +496,7 @@ function buildWaybillOfficeNex(rows) {
     const orderQty = toNum(r["주문량"]);
     const amt = pickAmount(r);
 
-    const code = normCode(r["상품코드"]); // 오피스넥스 파일도 상품코드 컬럼 사용(첨부 파일 기준)
+    const code = normCode(r["상품코드"]);
     const goods = goodsMap.get(code);
 
     const baseName = goods ? (goods["품목명"] || "").toString().trim()
@@ -517,12 +513,11 @@ function buildWaybillOfficeNex(rows) {
     if (goods) {
       carton = toNum(goods["최대수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
-      nexTag = (goods["오피스넥스"] || "").toString().trim(); // (선택) 컬럼이 생기면 자동 반영
+      nexTag = (goods["오피스넥스"] || "").toString().trim(); // (선택) 표기 컬럼이 생기면 자동 반영
     } else {
       missingCodes.add(code);
     }
 
-    // 입수 안전장치(0이면 1로)
     let units = toNum(r["입수"]);
     if (!units || units <= 0) units = 1;
 
@@ -586,10 +581,9 @@ function splitAndPush(out, r, baseName, vendorTag, totalQty, carton, fare, mode)
 
 /* ===============================
    waybill row 생성
-   ✅ 밸류포인트 특수 규칙:
-   - 수령자명에 "남궁현식" 또는 "김남석담당" 포함 시
-     받는분성명 = 밸류포인트
-     보내는분성명 = 라미에이스
+   ✅ 추가 규칙(오피스넥스):
+   - 발주처와 수령자명이 "넥스 물류센터"로 동일하면
+     받는분성명=오피스넥스, 보내는분성명=라미에이스
 ================================ */
 function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonSize) {
   let receiver="", addr="", phone1="", phone2="", memo="", orderNo="", purchaser="";
@@ -611,7 +605,19 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     purchaser = (r["발주처"] || "").toString().trim();
   }
 
-  // ✅ 오피스넥스 물류센터 규칙(부분 공백/문구 대응)
+  const originalReceiver = receiver;
+  const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
+
+  // ✅ 밸류포인트 특수 수령자(부분일치 + 공백제거)
+  const isValuePointSpecialReceiver =
+    mode === "valuepoint" &&
+    (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
+
+  if (isValuePointSpecialReceiver) {
+    receiver = "밸류포인트";
+  }
+
+  // ✅ 오피스넥스 물류센터 규칙(부분일치 + 공백제거)
   const purchaserNorm = String(purchaser || "").replace(/\s+/g, "");
   const isOfficeNexCenter =
     mode === "officenex" &&
@@ -620,17 +626,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   if (isOfficeNexCenter) {
     receiver = "오피스넥스";
-  }
-
-  // ✅ 밸류포인트 특수 수령자 판별(부분일치 + 공백제거)
-  const originalReceiver = receiver;
-  const receiverNorm = String(originalReceiver || "").replace(/\s+/g, "");
-  const isValuePointSpecialReceiver =
-    mode === "valuepoint" &&
-    (receiverNorm.includes("남궁현식") || receiverNorm.includes("김남석담당"));
-
-  if (isValuePointSpecialReceiver) {
-    receiver = "밸류포인트";
   }
 
   // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
@@ -665,7 +660,6 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     senderName = isValuePointSpecialReceiver ? "라미에이스" : "밸류포인트";
   } else if (mode === "officenex") {
     senderName = isOfficeNexCenter ? "라미에이스" : "오피스넥스";
-  }  
   } else {
     // 알파
     if (purchaser === "안성물류" && originalReceiver === "안성물류") {
@@ -715,25 +709,25 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     };
   }
 
-  // ✅ 밸류포인트: "밸류포인트" 글자X, 컬럼값만 붙임
+  // ✅ 밸류포인트: 컬럼값만 붙임
   if (mode === "valuepoint" && vendorTag && String(vendorTag).trim() !== "") {
     const vpVal = String(vendorTag).trim();
     itemName = `${baseName} ${vpVal}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 오피스넥스: (선택) goods["오피스넥스"] 값이 있으면 그 값만 붙임 ("오피스넥스" 문자열 X)
+  // ✅ 오피스넥스: (선택) goods["오피스넥스"] 값이 있으면 그 값만 붙임
   if (mode === "officenex" && vendorTag && String(vendorTag).trim() !== "") {
     const nxVal = String(vendorTag).trim();
     itemName = `${baseName} ${nxVal}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 네이버: goods["NAVER, 지마켓"] 값이 있으면 품목명에 포함
+  // ✅ 네이버
   if (mode === "naver" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
   }
 
-  // ✅ 알파: goods["알파"] 값이 있으면 품목명에 포함
+  // ✅ 알파
   if (mode === "alpha" && vendorTag && String(vendorTag).trim() !== "") {
     const cleaned = String(vendorTag).trim().replace(/\s*-\s*$/g, "");
     if (cleaned) itemName = `${baseName} ${cleaned}`.replace(/\s+/g, " ").trim();
@@ -765,12 +759,7 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 }
 
 /* ===============================
-   ✅ 중복 컬럼 채우기 (최종 규칙)
-   - 동일 (받는분성명+주소+전화) 그룹이 2행 이상일 때만 처리
-   - notFullCount = (qty !== carton) 인 행 개수
-   - ✅ qty===carton(최대수량 행)은 중복값 공란
-   - ✅ notFullCount가 1이면 표기 생략(전부 공란)
-   - ✅ notFullCount가 2 이상이면 "최대수량이 아닌 행"에만 notFullCount 표기
+   ✅ 중복 컬럼 채우기
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -785,7 +774,6 @@ function applyDuplicateColumn(rows) {
 
   for (const list of groups.values()) {
     for (const row of list) row["중복"] = "";
-
     if (list.length < 2) continue;
 
     const notFullRows = list.filter(row => {
@@ -796,8 +784,7 @@ function applyDuplicateColumn(rows) {
 
     const notFullCount = notFullRows.length;
     if (notFullCount <= 1) continue; // ✅ 1이면 생략
-
-    for (const row of notFullRows) row["중복"] = notFullCount; // ✅ 최대수량 아닌 행만
+    for (const row of notFullRows) row["중복"] = notFullCount;
   }
 
   for (const row of rows) {
@@ -828,7 +815,7 @@ function collectGoodsCodes(row) {
     "알파 상품코드",
     "네이버 상품코드",
     "밸류포인트 상품코드",
-    "오피스넥스 품목코드",  // ✅ 추가(예정)
+    "오피스넥스 품목코드",
     "네이버 상품번호",
     "상품번호",
     "상품코드",
@@ -957,7 +944,6 @@ function normCode(x) {
   return s;
 }
 
-/* ✅ 숫자 파싱 강화 */
 function toNum(x) {
   if (x === null || x === undefined) return 0;
   if (typeof x === "number") return Number.isFinite(x) ? x : 0;
@@ -989,7 +975,6 @@ function normalizePhone(v) {
 }
 
 function normalizeOptionDisplay(v) {
-  // "18mm, 검정" / "PVC 200 반투명" 같은 옵션 표시를 깔끔하게
   return String(v ?? "")
     .replace(/\u00A0/g, " ")
     .replace(/[\/\|]/g, " ")
