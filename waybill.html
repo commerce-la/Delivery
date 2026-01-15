@@ -316,7 +316,7 @@ function buildWaybillAlpha(rows) {
 
 /* ===============================
    네이버 변환
-   ✅ 수정: 기본은 goods["품목명"], 옵션이 '충분히 구체적'일 때만 baseName으로 사용
+   ✅ 옵션은 매칭용만! waybill 품목명은 항상 goods["품목명"] 사용
 ================================ */
 function buildWaybillNaver(rows) {
   const out = [];
@@ -331,18 +331,10 @@ function buildWaybillNaver(rows) {
     const goodsList = goodsNaverListMap.get(productNo) || [];
     const goods = pickBestNaverGoods(goodsList, r["옵션정보"]);
 
-    // ✅ 기본은 goods["품목명"] 우선
+    // ✅ baseName은 goods["품목명"] 고정 (옵션으로 덮지 않음)
     let baseName = goods
       ? (goods["품목명"] || "").toString().trim()
       : (r["상품명"] || "").toString().trim();
-
-    // ✅ 옵션이 충분히 구체적일 때만 옵션을 baseName으로 사용
-    if (goods) {
-      const opt = (goods["옵션"] || "").toString().trim();
-      if (shouldUseNaverOptionAsBase(opt)) {
-        baseName = normalizeOptionDisplay(opt);
-      }
-    }
 
     if (!baseName) baseName = (r["상품명"] || "").toString().trim();
 
@@ -956,28 +948,6 @@ function normalizeText(v) {
 
 function normalizePhone(v) {
   return String(v ?? "").replace(/[^\d]/g, "");
-}
-
-function normalizeOptionDisplay(v) {
-  return String(v ?? "")
-    .replace(/\u00A0/g, " ")
-    .replace(/[\/\|]/g, " ")
-    .replace(/,/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// ✅ 옵션이 너무 짧으면(예: 투명/검정) 품목명으로 쓰지 않게 판별
-function shouldUseNaverOptionAsBase(opt) {
-  const cleaned = normalizeOptionDisplay(opt);
-  if (!cleaned) return false;
-
-  const tokens = cleaned.split(" ").filter(Boolean);
-  if (tokens.length >= 2) return true;
-  if (/[0-9]/.test(cleaned)) return true;
-  if (/[A-Za-z]/.test(cleaned)) return true;
-
-  return false;
 }
 
 function setStatus(t) { statusEl.textContent = t; }
