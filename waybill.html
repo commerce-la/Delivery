@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스)</title>
+  <title>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이)</title>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
@@ -39,7 +39,7 @@
 
 <body>
 <main>
-  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스)</h1>
+  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이)</h1>
   <p>
     공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
     (제외) 네이버: 위킵 / 공통: 주문량=0 / 금액&lt;1 / 품목명에 [단종]
@@ -54,6 +54,7 @@
       <option value="office">오피스디포</option>
       <option value="valuepoint">밸류포인트</option>
       <option value="officenex">오피스넥스</option>
+      <option value="ebay">이베이(옥션/지마켓)</option>
     </select>
 
     <label style="margin-top:16px;">1. 공통 품목 파일 업로드</label>
@@ -90,8 +91,16 @@ const SENDER_PHONE = "031-987-9495";
 ================================ */
 let goodsRows = [];
 let orderRows = [];
-let goodsMap = new Map();          // 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스)
-let goodsNaverListMap = new Map(); // 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
+
+// 공통 코드 -> goods row (알파/오피스디포/밸류포인트/오피스넥스/기타)
+let goodsMap = new Map();
+
+// 네이버 전용: 네이버 상품코드(=주문파일 상품번호) -> goods rows[]
+let goodsNaverListMap = new Map();
+
+// ✅ 이베이 전용: 판매아이디에 따라 매핑 사용
+let goodsAuctionMap = new Map();  // 옥션 상품코드 -> goods row
+let goodsGmarketMap = new Map();  // 지마켓 상품코드 -> goods row
 
 const vendorEl   = document.getElementById("vendor");
 const goodsFileEl = document.getElementById("goodsFile");
@@ -119,8 +128,11 @@ vendorEl.addEventListener("change", async () => {
 goodsFileEl.addEventListener("change", async (e) => {
   const f = e.target.files?.[0];
   goodsRows = [];
+
   goodsMap.clear();
   goodsNaverListMap.clear();
+  goodsAuctionMap.clear();
+  goodsGmarketMap.clear();
 
   if (!f) { setStatus("품목 파일을 선택해 주세요."); updateBtn(); return; }
 
@@ -129,27 +141,38 @@ goodsFileEl.addEventListener("change", async (e) => {
     goodsRows = await readExcelFirstSheet(f);
 
     for (const r of goodsRows) {
-      // 공통 코드 매핑(알파/오피스디포/밸류포인트/오피스넥스)
+      // 1) 공통 코드 매핑(알파/오피스디포/밸류포인트/오피스넥스/기타)
       const codeCandidates = collectGoodsCodes(r);
       for (const c of codeCandidates) {
         const key = normCode(c);
         if (key) goodsMap.set(key, r);
       }
 
-      // 네이버 전용 매핑 (네이버 상품코드 -> 동일 상품번호 그룹)
-      const naverCodes = splitCodes(r["네이버 상품코드"]);
-      for (const c of naverCodes) {
+      // 2) 네이버 전용 매핑 (네이버 상품코드 -> 동일 상품번호 그룹)
+      for (const c of splitCodes(r["네이버 상품코드"])) {
         const code = normCode(c);
         if (!code) continue;
         if (!goodsNaverListMap.has(code)) goodsNaverListMap.set(code, []);
         goodsNaverListMap.get(code).push(r);
+      }
+
+      // 3) ✅ 이베이 전용 매핑 (옥션/지마켓 상품코드)
+      for (const c of splitCodes(r["옥션 상품코드"])) {
+        const code = normCode(c);
+        if (code) goodsAuctionMap.set(code, r);
+      }
+      for (const c of splitCodes(r["지마켓 상품코드"])) {
+        const code = normCode(c);
+        if (code) goodsGmarketMap.set(code, r);
       }
     }
 
     setStatus(
       `품목 파일 로드 완료\n` +
       `코드 매핑(공통): ${goodsMap.size}개\n` +
-      `네이버 매핑(상품번호별): ${goodsNaverListMap.size}개`
+      `네이버 매핑(상품번호별): ${goodsNaverListMap.size}개\n` +
+      `이베이-옥션 매핑: ${goodsAuctionMap.size}개\n` +
+      `이베이-지마켓 매핑: ${goodsGmarketMap.size}개`
     );
   } catch (err) {
     console.error(err);
@@ -185,7 +208,7 @@ async function loadOrderFile(file) {
     if (vendor === "naver") {
       orderRows = await readExcelByBestSheet(file, ["발주발송관리"]);
     } else {
-      // 알파/오피스디포/밸류포인트/오피스넥스(품목별 현황) → 첫 시트
+      // 알파/오피스디포/밸류포인트/오피스넥스/이베이 → 첫 시트
       orderRows = await readExcelFirstSheet(file);
     }
 
@@ -193,7 +216,8 @@ async function loadOrderFile(file) {
       vendor === "naver" ? "네이버" :
       vendor === "office" ? "오피스디포" :
       vendor === "valuepoint" ? "밸류포인트" :
-      vendor === "officenex" ? "오피스넥스" : "알파";
+      vendor === "officenex" ? "오피스넥스" :
+      vendor === "ebay" ? "이베이(옥션/지마켓)" : "알파";
 
     setStatus(`주문 파일 로드 완료\n행 수: ${orderRows.length}\n(업체: ${vendorName})`);
     showPreview(orderRows, "주문 파일 미리보기");
@@ -205,7 +229,12 @@ async function loadOrderFile(file) {
 
 function updateBtn() {
   const vendor = vendorEl.value;
-  const hasGoods = vendor === "naver" ? (goodsNaverListMap.size > 0) : (goodsMap.size > 0);
+
+  let hasGoods = false;
+  if (vendor === "naver") hasGoods = (goodsNaverListMap.size > 0);
+  else if (vendor === "ebay") hasGoods = (goodsAuctionMap.size > 0 || goodsGmarketMap.size > 0);
+  else hasGoods = (goodsMap.size > 0);
+
   convertBtn.disabled = !(vendor && hasGoods && orderRows.length > 0);
 }
 
@@ -223,6 +252,7 @@ convertBtn.addEventListener("click", () => {
     else if (vendor === "office") result = buildWaybillOffice(orderRows);
     else if (vendor === "valuepoint") result = buildWaybillValuePoint(orderRows);
     else if (vendor === "officenex") result = buildWaybillOfficeNex(orderRows);
+    else if (vendor === "ebay") result = buildWaybillEbay(orderRows);
     else result = buildWaybillAlpha(orderRows);
 
     // ✅ 중복 컬럼 채우기(내부필드 제거 포함)
@@ -331,7 +361,6 @@ function buildWaybillNaver(rows) {
     const goodsList = goodsNaverListMap.get(productNo) || [];
     const goods = pickBestNaverGoods(goodsList, r["옵션정보"]);
 
-    // ✅ baseName은 goods["품목명"] 고정 (옵션으로 덮지 않음)
     let baseName = goods
       ? (goods["품목명"] || "").toString().trim()
       : (r["상품명"] || "").toString().trim();
@@ -539,6 +568,64 @@ function buildWaybillOfficeNex(rows) {
 }
 
 /* ===============================
+   ✅ 이베이 변환(옥션/지마켓)
+   - 판매아이디에 "옥션" 포함 → goodsAuctionMap(옥션 상품코드) 사용 + 보내는분성명 "옥션"
+   - 판매아이디에 "지마켓" 포함 → goodsGmarketMap(지마켓 상품코드) 사용 + 보내는분성명 "지마켓"
+================================ */
+function buildWaybillEbay(rows) {
+  const out = [];
+  const excluded = [];
+  const missingCodes = new Set();
+
+  for (const r of rows) {
+    const sellerId = (r["판매아이디"] || "").toString().trim();
+    const platform = detectEbayPlatform(sellerId); // "옥션" | "지마켓" | ""
+
+    const orderQty = toNum(r["수량"]);
+    const amt = pickAmount(r);
+
+    const productNo = normCode(r["상품번호"]);
+
+    let goods = null;
+    if (platform === "옥션") goods = goodsAuctionMap.get(productNo) || null;
+    else if (platform === "지마켓") goods = goodsGmarketMap.get(productNo) || null;
+    else goods = goodsMap.get(productNo) || null;
+
+    const baseName = goods ? (goods["품목명"] || "").toString().trim()
+                           : (r["상품명"] || "").toString().trim();
+
+    const receiverName = (r["수령인명"] || "").toString().trim();
+    const orderNo = (r["주문번호"] || "").toString().trim();
+
+    if (!orderQty) { excluded.push(makeExcludeRow("주문량0", receiverName, productNo, baseName, orderNo)); continue; }
+    if (amt < 1)   { excluded.push(makeExcludeRow("금액<1", receiverName, productNo, baseName, orderNo)); continue; }
+    if (baseName.includes("[단종]")) { excluded.push(makeExcludeRow("[단종]", receiverName, productNo, baseName, orderNo)); continue; }
+
+    let carton = 0, fare = "";
+    if (goods) {
+      carton = toNum(goods["최대수량"]);
+      fare = (goods["최대운임"] || "").toString().trim();
+    } else {
+      missingCodes.add(`${platform || "이베이"}:${productNo}`);
+    }
+
+    // 이베이 파일은 입수 개념이 없으므로 주문수량 그대로
+    splitAndPush(out, r, baseName, "", orderQty, carton, fare, "ebay");
+  }
+
+  out.sort((a,b)=>String(a["받는분성명"]||"").localeCompare(String(b["받는분성명"]||""),"ko"));
+
+  const lines = [];
+  if (missingCodes.size > 0) {
+    const sample = Array.from(missingCodes).filter(Boolean).slice(0, 10);
+    lines.push(`[주의] 품목 파일에서 못 찾은 이베이 코드: ${missingCodes.size}개`);
+    if (sample.length) lines.push(`예시: ${sample.join(", ")}`);
+  }
+
+  return { rows: out, excluded, statsText: lines.join("\n") };
+}
+
+/* ===============================
    네이버 수량 추출
 ================================ */
 function pickNaverQty(r) {
@@ -591,7 +678,15 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
     phone2 = (r["수취인연락처2"] || "").toString().trim();
     memo = (firstNonEmpty(r, ["배송메세지", "배송메시지", "배송요청사항", "요청사항"]) || "").toString().trim();
     orderNo = (r["주문번호"] || r["상품주문번호"] || "").toString().trim();
+  } else if (mode === "ebay") {
+    receiver = (r["수령인명"] || "").toString().trim();
+    addr = (r["주소"] || "").toString().trim();
+    phone1 = (r["수령인 휴대폰"] || "").toString().trim();
+    phone2 = (r["수령인 전화번호"] || "").toString().trim();
+    memo = (r["배송시 요구사항"] || "").toString().trim();
+    orderNo = (r["주문번호"] || "").toString().trim();
   } else {
+    // 알파/오피스디포/밸류포인트/오피스넥스(품목별 현황)
     receiver = (r["수령자명"] || "").toString().trim();
     addr = (r["수령자 주소"] || "").toString().trim();
     phone1 = (r["수령자 전화번호"] || "").toString().trim();
@@ -622,8 +717,8 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   // ✅ 1차 보정: 둘 다 비면 주문자 연락처로
   if (!phone1 && !phone2) {
-    phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || "").toString().trim();
-    phone2 = (r["주문자 휴대전화"] || "").toString().trim();
+    phone1 = (r["주문자 전화번호"] || r["구매자연락처"] || r["구매자 전화번호"] || "").toString().trim();
+    phone2 = (r["주문자 휴대전화"] || r["구매자 휴대폰"] || "").toString().trim();
   } else if (!phone1) {
     phone1 = phone2;
   }
@@ -640,7 +735,12 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
   // 보내는분성명
   let senderName = "";
+
   if (mode === "naver") senderName = "네이버";
+  else if (mode === "ebay") {
+    const platform = detectEbayPlatform((r["판매아이디"] || "").toString());
+    senderName = platform || "이베이";
+  }
   else if (mode === "office") {
     senderName = (purchaser === "물류센터" && originalReceiver === "물류센터") ? "라미에이스" : "오피스디포";
   } else if (mode === "valuepoint") {
@@ -737,6 +837,10 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 
 /* ===============================
    ✅ 중복 컬럼 채우기
+   - 받는분성명+주소+전화번호 동일 그룹이 2개 이상일 때만
+   - 그 중 "수량 != 최대수량(카톤)" 행의 개수를 중복 칼럼에 표기
+   - 단, 최대수량 행에는 표기 안함
+   - 중복수가 1이면 생략(공란)
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -773,9 +877,17 @@ function applyDuplicateColumn(rows) {
 
 /* ===============================
    금액 후보 선택
+   ✅ 이베이 대응: "판매금액"도 포함
 ================================ */
 function pickAmount(r) {
-  const candidates = ["납품금액", "최종 상품별 총 주문금액", "상품가격", "최초 상품별 총 주문금액", "정산예정금액"];
+  const candidates = [
+    "납품금액",
+    "최종 상품별 총 주문금액",
+    "상품가격",
+    "최초 상품별 총 주문금액",
+    "정산예정금액",
+    "판매금액"
+  ];
   for (const k of candidates) {
     if (r && Object.prototype.hasOwnProperty.call(r, k)) return toNum(r[k]);
   }
@@ -784,6 +896,7 @@ function pickAmount(r) {
 
 /* ===============================
    공통 품목 파일 코드 수집
+   ✅ 이베이용: "옥션 상품코드", "지마켓 상품코드" 추가
 ================================ */
 function collectGoodsCodes(row) {
   const codes = [];
@@ -792,6 +905,8 @@ function collectGoodsCodes(row) {
     "네이버 상품코드",
     "밸류포인트 상품코드",
     "오피스넥스 품목코드",
+    "옥션 상품코드",
+    "지마켓 상품코드",
     "네이버 상품번호",
     "상품번호",
     "상품코드",
@@ -801,13 +916,13 @@ function collectGoodsCodes(row) {
   ];
 
   for (const k of preferred) {
-    if (row[k]) codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+    if (row[k]) codes.push(...splitCodes(row[k]));
   }
 
   for (const k of Object.keys(row)) {
     if (preferred.includes(k)) continue;
     if (String(k).includes("상품코드") && row[k]) {
-      codes.push(...String(row[k]).split(",").map(s => s.trim()).filter(Boolean));
+      codes.push(...splitCodes(row[k]));
     }
   }
 
@@ -960,11 +1075,23 @@ function escapeHtml(v) {
     .replace(/"/g, "&quot;");
 }
 
+// ✅ 쉼표/개행/슬래시/파이프 등으로 분리
 function splitCodes(v) {
   if (v === null || v === undefined) return [];
   const s = String(v).trim();
   if (!s) return [];
-  return s.split(",").map(x => x.trim()).filter(Boolean);
+  return s
+    .split(/[,\n\/\|]/g)
+    .map(x => String(x).trim())
+    .filter(Boolean);
+}
+
+// ✅ 이베이 플랫폼 판별 (판매아이디 기준)
+function detectEbayPlatform(sellerId) {
+  const s = String(sellerId || "").replace(/\s+/g, "");
+  if (s.includes("옥션")) return "옥션";
+  if (s.includes("지마켓")) return "지마켓";
+  return "";
 }
 
 /* ===============================
