@@ -40,7 +40,7 @@
 
 <body>
 <main>
-  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</h1>
+  <h1>order 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</h1>
   <p>
     공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
     (현재 로직) 주문서의 (알파)상품코드 → erp_goods의 알파 상품코드 매칭 → 품목코드 채움
@@ -65,7 +65,7 @@
     <label style="margin-top:16px;">2. 주문서 현황 파일 업로드</label>
     <input id="orderFile" type="file" accept=".xlsx,.xls" />
 
-    <button id="convertBtn" disabled>waybill.xlsx 생성</button>
+    <button id="convertBtn" disabled>order.xlsx 생성</button>
     <div id="status" class="status"></div>
 
     <!-- (미매칭/제외) 표시 영역: 스타일은 동일, 내용만 “미매칭”으로 사용 -->
@@ -324,8 +324,8 @@
         XLSX.utils.book_append_sheet(outWb, wsUn, "미매칭");
       }
 
-      XLSX.writeFile(outWb, "waybill.xlsx");
-      setStatus("\n완료! 다운로드: waybill.xlsx");
+      XLSX.writeFile(outWb, "order.xlsx");
+      setStatus("\n완료! 다운로드: order.xlsx");
 
     } catch (e) {
       console.error(e);
