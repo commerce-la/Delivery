@@ -5,14 +5,73 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>주문서 → Template(품목코드 채움)</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 820px; }
-    label { display:block; margin: 12px 0 6px; font-weight: 600; }
-    input[type="file"] { width: 100%; }
-    button { margin-top: 16px; padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .hint { color:#555; font-size: 13px; line-height: 1.5; margin-top: 10px; }
-    .log { background:#fafafa; border:1px solid #eee; border-radius:10px; padding:12px; margin-top:16px; white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    /* ✅ 다크모드/자동반전 환경에서도 글자 안 사라지게 */
+    :root { color-scheme: light; }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 24px;
+      background: #fff;
+      color: #111; /* ✅ 기본 글자색 */
+    }
+
+    h2 { color: #111; }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 16px;
+      max-width: 820px;
+      background: #fff;
+      color: #111;
+    }
+
+    label {
+      display:block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+      color: #111; /* ✅ */
+    }
+
+    input[type="file"] {
+      width: 100%;
+      color: #111; /* ✅ 파일명 표시 */
+    }
+
+    button {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      background: #111;
+      color: #fff; /* ✅ 버튼 글자 */
+    }
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      color:#222; /* ✅ */
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+    .hint b { color: #111; } /* ✅ 강조 텍스트 */
+
+    .log {
+      background:#fafafa;
+      border:1px solid #eee;
+      border-radius:10px;
+      padding:12px;
+      margin-top:16px;
+      white-space:pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: #111; /* ✅ 로그 글자 */
+    }
   </style>
 </head>
 <body>
@@ -63,7 +122,6 @@
     function normalizeCode(v) {
       if (v === null || v === undefined) return "";
       let s = String(v).trim();
-      // 엑셀에서 1147840.0 처럼 들어오는 케이스 제거
       if (/^\d+(\.0+)?$/.test(s)) s = s.replace(/\.0+$/, "");
       return s;
     }
@@ -77,185 +135,18 @@
       });
     }
 
-    // rows(AOA)에서 헤더행(필수 컬럼을 포함하는 행)을 탐색
     function findHeaderRowIndex(aoa, requiredHeaderCandidates, scanRows = 30) {
       const limit = Math.min(scanRows, aoa.length);
       for (let r = 0; r < limit; r++) {
         const row = (aoa[r] || []).map(normalizeHeader);
         let ok = true;
         for (const group of requiredHeaderCandidates) {
-          // group: 후보 헤더들 중 하나라도 있으면 통과
           const hasAny = group.some(cand => row.includes(normalizeHeader(cand)));
           if (!hasAny) { ok = false; break; }
         }
         if (ok) return r;
       }
-      return 0; // 못 찾으면 0행을 헤더로 가정
+      return 0;
     }
 
-    function buildHeaderIndexMap(headers) {
-      const map = new Map();
-      headers.forEach((h, idx) => map.set(normalizeHeader(h), idx));
-      return map;
-    }
-
-    function findColIndex(headers, candidates) {
-      const hnorm = headers.map(normalizeHeader);
-      // 1) 완전일치 우선
-      for (const cand of candidates) {
-        const c = normalizeHeader(cand);
-        const idx = hnorm.indexOf(c);
-        if (idx >= 0) return idx;
-      }
-      // 2) 포함 매칭(헤더가 "상품코드(알파)"처럼 섞여있는 경우)
-      for (const cand of candidates) {
-        const c = normalizeHeader(cand);
-        const idx = hnorm.findIndex(h => h.includes(c) || c.includes(h));
-        if (idx >= 0) return idx;
-      }
-      return -1;
-    }
-
-    function todayYMD() {
-      const d = new Date();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}${mm}${dd}`;
-    }
-
-    function enableIfReady() {
-      runBtn.disabled = !(orderInput.files?.[0] && goodsInput.files?.[0]);
-    }
-    orderInput.addEventListener("change", enableIfReady);
-    goodsInput.addEventListener("change", enableIfReady);
-
-    runBtn.addEventListener("click", async () => {
-      clearLog();
-      try {
-        const orderFile = orderInput.files[0];
-        const goodsFile = goodsInput.files[0];
-
-        log("[1/4] 파일 읽는 중...");
-        const [orderBuf, goodsBuf] = await Promise.all([
-          readFileAsArrayBuffer(orderFile),
-          readFileAsArrayBuffer(goodsFile)
-        ]);
-
-        log("[2/4] 엑셀 파싱 중...");
-        const orderWb = XLSX.read(orderBuf, { type: "array" });
-        const goodsWb = XLSX.read(goodsBuf, { type: "array" });
-
-        const orderSheetName = orderWb.SheetNames[0];
-        const goodsSheetName = goodsWb.SheetNames[0];
-
-        const orderWs = orderWb.Sheets[orderSheetName];
-        const goodsWs = goodsWb.Sheets[goodsSheetName];
-
-        const orderAoa = XLSX.utils.sheet_to_json(orderWs, { header: 1, defval: "" });
-        const goodsAoa = XLSX.utils.sheet_to_json(goodsWs, { header: 1, defval: "" });
-
-        // 주문서: (알파)상품코드, 수량이 들어있는 헤더행 찾기
-        const orderHeaderRow = findHeaderRowIndex(orderAoa, [
-          ["상품코드", "알파 상품코드", "알파상품코드"],
-          ["수량", "주문수량", "발주수량"]
-        ]);
-
-        // 공통품목: 알파 상품코드, 품목코드 헤더행 찾기
-        const goodsHeaderRow = findHeaderRowIndex(goodsAoa, [
-          ["알파 상품코드", "알파상품코드"],
-          ["품목코드"]
-        ]);
-
-        const orderHeaders = orderAoa[orderHeaderRow] || [];
-        const goodsHeaders = goodsAoa[goodsHeaderRow] || [];
-
-        const orderAlphaIdx = findColIndex(orderHeaders, ["알파 상품코드", "알파상품코드", "상품코드"]);
-        const orderQtyIdx   = findColIndex(orderHeaders, ["수량", "주문수량", "발주수량"]);
-        const orderNameIdx  = findColIndex(orderHeaders, ["상품명", "품명"]);
-        const orderSpecIdx  = findColIndex(orderHeaders, ["규격", "옵션", "세부사항"]);
-
-        const goodsAlphaIdx = findColIndex(goodsHeaders, ["알파 상품코드", "알파상품코드"]);
-        const goodsItemIdx  = findColIndex(goodsHeaders, ["품목코드"]);
-
-        if (orderAlphaIdx < 0) throw new Error("주문서에서 상품코드(알파 상품코드) 컬럼을 찾지 못했습니다.");
-        if (orderQtyIdx < 0)   throw new Error("주문서에서 수량 컬럼을 찾지 못했습니다.");
-        if (goodsAlphaIdx < 0) throw new Error("erp_goods에서 알파 상품코드 컬럼을 찾지 못했습니다.");
-        if (goodsItemIdx < 0)  throw new Error("erp_goods에서 품목코드 컬럼을 찾지 못했습니다.");
-
-        log(`- 주문서 시트: ${orderSheetName} / 헤더행: ${orderHeaderRow + 1}`);
-        log(`- erp_goods 시트: ${goodsSheetName} / 헤더행: ${goodsHeaderRow + 1}`);
-
-        log("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
-        const alphaToItem = new Map();
-        let goodsCount = 0;
-        let dupCount = 0;
-
-        for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
-          const row = goodsAoa[r] || [];
-          const alpha = normalizeCode(row[goodsAlphaIdx]);
-          const item = String(row[goodsItemIdx] ?? "").trim();
-          if (!alpha || !item) continue;
-
-          goodsCount++;
-          if (!alphaToItem.has(alpha)) alphaToItem.set(alpha, item);
-          else dupCount++;
-        }
-
-        log(`- 매핑 건수: ${alphaToItem.size} (원본 유효행 ${goodsCount}, 중복키 ${dupCount})`);
-
-        log("[4/4] Template(주문서입력) 데이터 생성 중...");
-        const outHeaders = ["품목코드", "수량", "세부사항", "입수량", "카톤수", "무게"];
-        const outRows = [];
-        const unmatchedRows = [];
-
-        for (let r = orderHeaderRow + 1; r < orderAoa.length; r++) {
-          const row = orderAoa[r] || [];
-          const alpha = normalizeCode(row[orderAlphaIdx]);
-          const qty = row[orderQtyIdx];
-
-          // 빈 행 스킵(상품코드/수량이 모두 비면)
-          if (!alpha && (qty === "" || qty === null || qty === undefined)) continue;
-
-          const itemCode = alphaToItem.get(alpha) || "";
-          const name = orderNameIdx >= 0 ? String(row[orderNameIdx] ?? "").trim() : "";
-          const spec = orderSpecIdx >= 0 ? String(row[orderSpecIdx] ?? "").trim() : "";
-          const detail = [name, spec].filter(Boolean).join(" / "); // 세부사항은 선택적으로 채움
-
-          outRows.push([itemCode, qty, detail, "", "", ""]);
-
-          if (!itemCode) {
-            unmatchedRows.push({
-              "주문서행번호(엑셀기준)": r + 1,
-              "알파상품코드": alpha,
-              "수량": qty,
-              "상품명": name,
-              "규격": spec
-            });
-          }
-        }
-
-        // 결과 워크북 생성 (Template 업로드 없이 헤더 내장)
-        const outWb = XLSX.utils.book_new();
-        const wsOut = XLSX.utils.aoa_to_sheet([outHeaders, ...outRows]);
-        XLSX.utils.book_append_sheet(outWb, wsOut, "주문서입력");
-
-        if (unmatchedRows.length > 0) {
-          const wsUn = XLSX.utils.json_to_sheet(unmatchedRows, { skipHeader: false });
-          XLSX.utils.book_append_sheet(outWb, wsUn, "미매칭");
-          log(`- 미매칭: ${unmatchedRows.length}건 (미매칭 시트에 저장)`);
-        } else {
-          log("- 미매칭: 0건");
-        }
-
-        const outName = `주문서입력_변환_${todayYMD()}.xlsx`;
-        XLSX.writeFile(outWb, outName);
-        log(`\n완료! 다운로드 파일: ${outName}`);
-      } catch (err) {
-        console.error(err);
-        log("\n[오류] " + (err?.message || String(err)));
-      }
-    });
-  </script>
-</body>
-</html>
+    function fi
