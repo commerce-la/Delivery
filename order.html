@@ -149,4 +149,150 @@
       return 0;
     }
 
-    function fi
+    function findColIndex(headers, candidates) {
+      const hnorm = headers.map(normalizeHeader);
+      for (const cand of candidates) {
+        const c = normalizeHeader(cand);
+        const idx = hnorm.indexOf(c);
+        if (idx >= 0) return idx;
+      }
+      for (const cand of candidates) {
+        const c = normalizeHeader(cand);
+        const idx = hnorm.findIndex(h => h.includes(c) || c.includes(h));
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    }
+
+    function todayYMD() {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}${mm}${dd}`;
+    }
+
+    function enableIfReady() {
+      runBtn.disabled = !(orderInput.files?.[0] && goodsInput.files?.[0]);
+    }
+    orderInput.addEventListener("change", enableIfReady);
+    goodsInput.addEventListener("change", enableIfReady);
+
+    runBtn.addEventListener("click", async () => {
+      clearLog();
+      try {
+        const orderFile = orderInput.files[0];
+        const goodsFile = goodsInput.files[0];
+
+        log("[1/4] 파일 읽는 중...");
+        const [orderBuf, goodsBuf] = await Promise.all([
+          readFileAsArrayBuffer(orderFile),
+          readFileAsArrayBuffer(goodsFile)
+        ]);
+
+        log("[2/4] 엑셀 파싱 중...");
+        const orderWb = XLSX.read(orderBuf, { type: "array" });
+        const goodsWb = XLSX.read(goodsBuf, { type: "array" });
+
+        const orderSheetName = orderWb.SheetNames[0];
+        const goodsSheetName = goodsWb.SheetNames[0];
+
+        const orderWs = orderWb.Sheets[orderSheetName];
+        const goodsWs = goodsWb.Sheets[goodsSheetName];
+
+        const orderAoa = XLSX.utils.sheet_to_json(orderWs, { header: 1, defval: "" });
+        const goodsAoa = XLSX.utils.sheet_to_json(goodsWs, { header: 1, defval: "" });
+
+        const orderHeaderRow = findHeaderRowIndex(orderAoa, [
+          ["상품코드", "알파 상품코드", "알파상품코드"],
+          ["수량", "주문수량", "발주수량"]
+        ]);
+
+        const goodsHeaderRow = findHeaderRowIndex(goodsAoa, [
+          ["알파 상품코드", "알파상품코드"],
+          ["품목코드"]
+        ]);
+
+        const orderHeaders = orderAoa[orderHeaderRow] || [];
+        const goodsHeaders = goodsAoa[goodsHeaderRow] || [];
+
+        const orderAlphaIdx = findColIndex(orderHeaders, ["알파 상품코드", "알파상품코드", "상품코드"]);
+        const orderQtyIdx   = findColIndex(orderHeaders, ["수량", "주문수량", "발주수량"]);
+        const orderNameIdx  = findColIndex(orderHeaders, ["상품명", "품명"]);
+        const orderSpecIdx  = findColIndex(orderHeaders, ["규격", "옵션", "세부사항"]);
+
+        const goodsAlphaIdx = findColIndex(goodsHeaders, ["알파 상품코드", "알파상품코드"]);
+        const goodsItemIdx  = findColIndex(goodsHeaders, ["품목코드"]);
+
+        if (orderAlphaIdx < 0) throw new Error("주문서에서 상품코드(알파 상품코드) 컬럼을 찾지 못했습니다.");
+        if (orderQtyIdx < 0)   throw new Error("주문서에서 수량 컬럼을 찾지 못했습니다.");
+        if (goodsAlphaIdx < 0) throw new Error("erp_goods에서 알파 상품코드 컬럼을 찾지 못했습니다.");
+        if (goodsItemIdx < 0)  throw new Error("erp_goods에서 품목코드 컬럼을 찾지 못했습니다.");
+
+        log(`- 주문서 시트: ${orderSheetName} / 헤더행: ${orderHeaderRow + 1}`);
+        log(`- erp_goods 시트: ${goodsSheetName} / 헤더행: ${goodsHeaderRow + 1}`);
+
+        log("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
+        const alphaToItem = new Map();
+
+        for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
+          const row = goodsAoa[r] || [];
+          const alpha = normalizeCode(row[goodsAlphaIdx]);
+          const item = String(row[goodsItemIdx] ?? "").trim();
+          if (!alpha || !item) continue;
+          if (!alphaToItem.has(alpha)) alphaToItem.set(alpha, item);
+        }
+
+        log("[4/4] Template(주문서입력) 데이터 생성 중...");
+        const outHeaders = ["품목코드", "수량", "세부사항", "입수량", "카톤수", "무게"];
+        const outRows = [];
+        const unmatchedRows = [];
+
+        for (let r = orderHeaderRow + 1; r < orderAoa.length; r++) {
+          const row = orderAoa[r] || [];
+          const alpha = normalizeCode(row[orderAlphaIdx]);
+          const qty = row[orderQtyIdx];
+
+          if (!alpha && (qty === "" || qty === null || qty === undefined)) continue;
+
+          const itemCode = alphaToItem.get(alpha) || "";
+          const name = orderNameIdx >= 0 ? String(row[orderNameIdx] ?? "").trim() : "";
+          const spec = orderSpecIdx >= 0 ? String(row[orderSpecIdx] ?? "").trim() : "";
+          const detail = [name, spec].filter(Boolean).join(" / ");
+
+          outRows.push([itemCode, qty, detail, "", "", ""]);
+
+          if (!itemCode) {
+            unmatchedRows.push({
+              "주문서행번호(엑셀기준)": r + 1,
+              "알파상품코드": alpha,
+              "수량": qty,
+              "상품명": name,
+              "규격": spec
+            });
+          }
+        }
+
+        const outWb = XLSX.utils.book_new();
+        const wsOut = XLSX.utils.aoa_to_sheet([outHeaders, ...outRows]);
+        XLSX.utils.book_append_sheet(outWb, wsOut, "주문서입력");
+
+        if (unmatchedRows.length > 0) {
+          const wsUn = XLSX.utils.json_to_sheet(unmatchedRows, { skipHeader: false });
+          XLSX.utils.book_append_sheet(outWb, wsUn, "미매칭");
+          log(`- 미매칭: ${unmatchedRows.length}건 (미매칭 시트에 저장)`);
+        } else {
+          log("- 미매칭: 0건");
+        }
+
+        const outName = `주문서입력_변환_${todayYMD()}.xlsx`;
+        XLSX.writeFile(outWb, outName);
+        log(`\n완료! 다운로드 파일: ${outName}`);
+      } catch (err) {
+        console.error(err);
+        log("\n[오류] " + (err?.message || String(err)));
+      }
+    });
+  </script>
+</body>
+</html>
