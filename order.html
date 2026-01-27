@@ -265,14 +265,23 @@
       setStatus("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
       const alphaToItem = new Map();
       let dup = 0;
+
       for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
         const row = goodsAoa[r] || [];
-        const alpha = normalizeCode(row[goodsAlphaIdx]);
-        const item = String(row[goodsItemIdx] ?? "").trim();
-        if (!alpha || !item) continue;
-        if (!alphaToItem.has(alpha)) alphaToItem.set(alpha, item);
-        else dup++;
+
+        const alphaRaw = row[goodsAlphaIdx];                  // 예: "1147840, 1147841"
+        const item = String(row[goodsItemIdx] ?? "").trim();  // 품목코드
+        if (!item) continue;
+
+        const alphas = splitAlphaCodes(alphaRaw);             // ["1147840","1147841"]
+        if (alphas.length === 0) continue;
+
+        for (const a of alphas) {
+          if (!alphaToItem.has(a)) alphaToItem.set(a, item);
+          else dup++;
+        }
       }
+
       setStatus(`- 매핑 키 수: ${alphaToItem.size} (중복키 ${dup})`);
 
       setStatus("[4/4] 주문서입력 데이터 생성 중...");
