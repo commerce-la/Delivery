@@ -8,7 +8,6 @@
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
-  <!-- ✅ 요청하신 “첨부한 HTML”과 동일한 스타일 -->
   <style>
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background:#0f172a; color:#e5e7eb; }
     main { max-width: 980px; margin: 0 auto; padding: 24px 16px 40px; }
@@ -42,7 +41,7 @@
 <main>
   <h1>order 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</h1>
   <p>
-    공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
+    공통 품목 파일 + 주문 파일 업로드 → <code>order.xlsx</code> 생성<br/>
     (현재 로직) 주문서의 (알파)상품코드 → erp_goods의 알파 상품코드 매칭 → 품목코드 채움
   </p>
 
@@ -68,7 +67,6 @@
     <button id="convertBtn" disabled>order.xlsx 생성</button>
     <div id="status" class="status"></div>
 
-    <!-- (미매칭/제외) 표시 영역: 스타일은 동일, 내용만 “미매칭”으로 사용 -->
     <div id="excludeWrap" class="excludeWrap">
       <div class="row">
         <div class="small"><b>미매칭(품목코드 없음) 목록</b> (사유 / 알파상품코드 / 상품명 / 규격 / 주문서행)</div>
@@ -78,7 +76,6 @@
       <div class="small" id="excludeNote" style="display:none;"></div>
     </div>
 
-    <!-- 미리보기 -->
     <div class="preview" id="preview"></div>
   </div>
 </main>
@@ -98,12 +95,8 @@
   const excludeTableEl = $("#excludeTable");
   const excludeNoteEl = $("#excludeNote");
 
-  function setStatus(msg) {
-    statusEl.textContent += msg + "\n";
-  }
-  function clearStatus() {
-    statusEl.textContent = "";
-  }
+  function setStatus(msg) { statusEl.textContent += msg + "\n"; }
+  function clearStatus() { statusEl.textContent = ""; }
 
   function normalizeHeader(h) {
     return String(h ?? "").trim().replace(/\s+/g, "").toLowerCase();
@@ -112,9 +105,28 @@
   function normalizeCode(v) {
     if (v === null || v === undefined) return "";
     let s = String(v).trim();
-    // 1147840.0 같은 형태 보정
     if (/^\d+(\.0+)?$/.test(s)) s = s.replace(/\.0+$/, "");
     return s;
+  }
+
+  /* ✅ 복수 알파상품코드 지원: "2148880, 2148882" 등 분리 */
+  function splitAlphaCodes(raw) {
+    const s = normalizeCode(raw);
+    if (!s) return [];
+    const parts = s
+      .split(/[,\s\/|;]+/g)   // 쉼표/공백/줄바꿈//|/; 모두 구분자로 처리
+      .map(x => normalizeCode(x))
+      .filter(Boolean);
+    return Array.from(new Set(parts));
+  }
+
+  function findItemCodeByAlpha(rawAlphaCell, alphaToItemMap) {
+    const candidates = splitAlphaCodes(rawAlphaCell);
+    for (const code of candidates) {
+      const item = alphaToItemMap.get(code);
+      if (item) return { itemCode: item, matchedAlpha: code };
+    }
+    return { itemCode: "", matchedAlpha: "" };
   }
 
   function readAsArrayBuffer(file) {
@@ -126,7 +138,6 @@
     });
   }
 
-  // rows(AOA)에서 헤더행(필수 컬럼을 포함하는 행)을 탐색
   function findHeaderRowIndex(aoa, requiredHeaderCandidates, scanRows = 30) {
     const limit = Math.min(scanRows, aoa.length);
     for (let r = 0; r < limit; r++) {
@@ -138,18 +149,16 @@
       }
       if (ok) return r;
     }
-    return 0; // 못 찾으면 0행 가정
+    return 0;
   }
 
   function findColIndex(headers, candidates) {
     const hnorm = headers.map(normalizeHeader);
-    // 1) 완전 일치
     for (const cand of candidates) {
       const c = normalizeHeader(cand);
       const idx = hnorm.indexOf(c);
       if (idx >= 0) return idx;
     }
-    // 2) 포함 매칭
     for (const cand of candidates) {
       const c = normalizeHeader(cand);
       const idx = hnorm.findIndex(h => h.includes(c) || c.includes(h));
@@ -224,13 +233,11 @@
       const goodsAoa = XLSX.utils.sheet_to_json(goodsWs, { header: 1, defval: "" });
       const orderAoa = XLSX.utils.sheet_to_json(orderWs, { header: 1, defval: "" });
 
-      // erp_goods: 알파 상품코드, 품목코드
       const goodsHeaderRow = findHeaderRowIndex(goodsAoa, [
         ["알파 상품코드", "알파상품코드"],
         ["품목코드"]
       ]);
 
-      // 주문서: (알파)상품코드, 수량
       const orderHeaderRow = findHeaderRowIndex(orderAoa, [
         ["상품코드", "알파 상품코드", "알파상품코드"],
         ["수량", "주문수량", "발주수량"]
@@ -275,13 +282,16 @@
 
       for (let r = orderHeaderRow + 1; r < orderAoa.length; r++) {
         const row = orderAoa[r] || [];
-        const alpha = normalizeCode(row[orderAlphaIdx]);
+
+        const alphaRaw = row[orderAlphaIdx];              // 원본 셀(복수 코드 가능)
+        const alphaList = splitAlphaCodes(alphaRaw);      // ["2148880","2148882"] 등
         const qty = row[orderQtyIdx];
 
         // 빈행 스킵
-        if (!alpha && (qty === "" || qty === null || qty === undefined)) continue;
+        if (alphaList.length === 0 && (qty === "" || qty === null || qty === undefined)) continue;
 
-        const itemCode = alphaToItem.get(alpha) || "";
+        const { itemCode } = findItemCodeByAlpha(alphaRaw, alphaToItem);
+
         const name = orderNameIdx >= 0 ? String(row[orderNameIdx] ?? "").trim() : "";
         const spec = orderSpecIdx >= 0 ? String(row[orderSpecIdx] ?? "").trim() : "";
         const detail = [name, spec].filter(Boolean).join(" / ");
@@ -291,7 +301,7 @@
         if (!itemCode) {
           unmatched.push([
             "품목코드 미매칭",
-            alpha,
+            alphaList.join(", "),
             name,
             spec,
             r + 1
@@ -299,11 +309,9 @@
         }
       }
 
-      // ✅ 미리보기(스타일 동일)
       renderTable(previewEl, outHeaders, outRows, 25);
       setStatus(`- 생성 행 수: ${outRows.length}`);
 
-      // ✅ 미매칭(스타일 동일)
       if (unmatched.length > 0) {
         excludeWrapEl.style.display = "block";
         excludeCountEl.textContent = `${unmatched.length}건`;
@@ -313,7 +321,6 @@
         excludeNoteEl.textContent = "※ 미매칭 건은 엑셀 파일의 '미매칭' 시트에도 저장됩니다.";
       }
 
-      // ✅ 결과 엑셀 생성 (Template 업로드 없이 내장 형식)
       const outWb = XLSX.utils.book_new();
       const wsOut = XLSX.utils.aoa_to_sheet([outHeaders, ...outRows]);
       XLSX.utils.book_append_sheet(outWb, wsOut, "주문서입력");
