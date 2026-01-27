@@ -3,96 +3,240 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>주문서 → Template(품목코드 채움)</title>
+  <title>Waybill 변환</title>
+
   <style>
-    /* ✅ 다크모드/자동반전 환경에서도 글자 안 사라지게 */
-    :root { color-scheme: light; }
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
 
-    body {
+    body{
+      margin:0;
+      min-height:100vh;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      margin: 24px;
-      background: #fff;
-      color: #111; /* ✅ 기본 글자색 */
+      background:
+        radial-gradient(1200px 600px at 15% 10%, rgba(59,130,246,.25), transparent 55%),
+        radial-gradient(900px 500px at 80% 20%, rgba(14,165,233,.18), transparent 55%),
+        linear-gradient(180deg, #0b1220 0%, #070b14 100%);
+      color:#e5e7eb;
     }
 
-    h2 { color: #111; }
-
-    .card {
-      border: 1px solid #ddd;
-      border-radius: 12px;
-      padding: 16px;
-      max-width: 820px;
-      background: #fff;
-      color: #111;
+    .wrap{
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 22px 40px;
     }
 
-    label {
-      display:block;
-      margin: 12px 0 6px;
-      font-weight: 600;
-      color: #111; /* ✅ */
+    h1{
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #f8fafc;
     }
 
-    input[type="file"] {
-      width: 100%;
-      color: #111; /* ✅ 파일명 표시 */
-    }
-
-    button {
-      margin-top: 16px;
-      padding: 10px 14px;
-      border: 0;
-      border-radius: 10px;
-      cursor: pointer;
-      background: #111;
-      color: #fff; /* ✅ 버튼 글자 */
-    }
-
-    button:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-
-    .hint {
-      color:#222; /* ✅ */
+    .sub{
+      margin: 0 0 18px;
+      color:#cbd5e1;
       font-size: 13px;
-      line-height: 1.5;
-      margin-top: 10px;
+      line-height: 1.6;
     }
-    .hint b { color: #111; } /* ✅ 강조 텍스트 */
+    .sub b{ color:#f8fafc; }
 
-    .log {
-      background:#fafafa;
-      border:1px solid #eee;
-      border-radius:10px;
-      padding:12px;
-      margin-top:16px;
-      white-space:pre-wrap;
+    .panel{
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+    }
+
+    .row{ margin: 14px 0 18px; }
+
+    .label{
+      display:block;
+      margin: 0 0 10px;
+      font-weight: 800;
+      font-size: 14px;
+      color:#f1f5f9;
+    }
+
+    .control, .select{
+      width:100%;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(2,6,23,0.55);
+      border: 1px solid rgba(148,163,184,0.25);
+      color:#e5e7eb;
+      padding: 10px 14px;
+      outline:none;
+    }
+
+    .control:focus, .select:focus{
+      border-color: rgba(59,130,246,.65);
+      box-shadow: 0 0 0 4px rgba(59,130,246,.18);
+    }
+
+    /* 커스텀 파일 업로더 (2번째 이미지 느낌) */
+    .filewrap{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 14px;
+      width: 100%;
+      min-height: 56px;
+      border-radius: 16px;
+      background: rgba(2,6,23,0.55);
+      border: 1px solid rgba(148,163,184,0.25);
+      padding: 10px 12px;
+    }
+
+    .filewrap:focus-within{
+      border-color: rgba(59,130,246,.65);
+      box-shadow: 0 0 0 4px rgba(59,130,246,.18);
+    }
+
+    .filewrap .pick{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #0b1220;
+      font-weight: 900;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid rgba(0,0,0,0.12);
+      flex: 0 0 auto;
+    }
+
+    .filewrap .name{
+      flex: 1 1 auto;
+      color:#cbd5e1;
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    input[type="file"]{
+      position:absolute;
+      left:-9999px;
+      width:1px;height:1px;
+      opacity:0;
+    }
+
+    .actions{
+      margin-top: 8px;
+      display:flex;
+      align-items:center;
+      gap: 12px;
+    }
+
+    .btn{
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 0;
+      font-weight: 900;
+      cursor: pointer;
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      color:#fff;
+      background: linear-gradient(180deg, rgba(59,130,246,1) 0%, rgba(37,99,235,1) 100%);
+      box-shadow: 0 12px 26px rgba(37,99,235,.25);
+    }
+
+    .btn:disabled{
+      opacity: .55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* 2번째 이미지의 긴 가로 라인 느낌 */
+    .divider{
+      height: 1px;
+      background: rgba(148,163,184,0.22);
+      margin: 22px 0 14px;
+    }
+
+    .divider.big{
+      margin: 18px 0 0;
+    }
+
+    .log{
+      background: rgba(2,6,23,0.55);
+      border: 1px solid rgba(148,163,184,0.20);
+      border-radius: 14px;
+      padding: 12px 14px;
+      min-height: 100px;
+      white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 12px;
-      color: #111; /* ✅ 로그 글자 */
+      color:#e2e8f0;
+      margin-top: 14px;
     }
   </style>
 </head>
+
 <body>
-  <div class="card">
-    <h2>erp_goods + 주문서 현황 → Template(주문서입력) 생성</h2>
-
-    <label>1) 공통 품목 파일(erp_goods) 업로드 (.xlsx)</label>
-    <input id="goodsFile" type="file" accept=".xlsx,.xls" />
-
-    <label>2) 주문서 현황 파일 업로드 (.xlsx)</label>
-    <input id="orderFile" type="file" accept=".xlsx,.xls" />
-
-    <button id="runBtn" disabled>변환 & 다운로드</button>
-
-    <div class="hint">
-      - 주문서에서 <b>(알파) 상품코드</b>를 찾고, erp_goods의 <b>알파 상품코드 → 품목코드</b>로 매핑합니다.<br/>
-      - 결과 엑셀은 Template 업로드 없이, 시트명 <b>주문서입력</b> / 헤더 <b>품목코드, 수량, 세부사항, 입수량, 카톤수, 무게</b>로 생성됩니다.<br/>
-      - 매칭 실패 건은 <b>미매칭</b> 시트에 따로 저장합니다.
+  <div class="wrap">
+    <h1>Waybill 변환 (알파/네이버/오피스디포/웰루포인트/오피스넥스/이베이/드림오피스)</h1>
+    <div class="sub">
+      공통 품목 파일 + 주문 파일 업로드 → <b>waybill.xlsx</b> 생성<br/>
+      (제외) 네이버: 위/김 / 공통: 주문량=0 / 금액&lt;1 / 품목명에 [단종]
     </div>
 
-    <div id="log" class="log"></div>
+    <div class="panel">
+
+      <div class="row">
+        <label class="label">0. 업체 선택</label>
+        <!-- 스타일만 맞추기 위한 UI (현재 로직엔 영향 없음) -->
+        <select id="vendor" class="select">
+          <option value="">선택하세요</option>
+          <option value="alpha">알파</option>
+          <option value="naver">네이버</option>
+          <option value="office_depot">오피스디포</option>
+          <option value="wellupoint">웰루포인트</option>
+          <option value="officenex">오피스넥스</option>
+          <option value="ebay">이베이</option>
+          <option value="dreamoffice">드림오피스</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="label">1. 공통 품목 파일 업로드</label>
+        <div class="filewrap">
+          <label class="pick" for="goodsFile">파일 선택</label>
+          <div class="name" id="goodsName">선택된 파일 없음</div>
+          <input id="goodsFile" type="file" accept=".xlsx,.xls" />
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="label">2. 주문 파일 업로드</label>
+        <div class="filewrap">
+          <label class="pick" for="orderFile">파일 선택</label>
+          <div class="name" id="orderName">선택된 파일 없음</div>
+          <input id="orderFile" type="file" accept=".xlsx,.xls" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="runBtn" class="btn" disabled>waybill.xlsx 생성</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div id="log" class="log"></div>
+
+      <div class="divider big"></div>
+    </div>
   </div>
 
   <!-- SheetJS (XLSX) -->
@@ -100,23 +244,20 @@
 
   <script>
     const $ = (sel) => document.querySelector(sel);
+
+    const vendorSel = $("#vendor"); // UI용(현재 로직엔 영향 없음)
     const orderInput = $("#orderFile");
     const goodsInput = $("#goodsFile");
     const runBtn = $("#runBtn");
     const logEl = $("#log");
+    const goodsName = $("#goodsName");
+    const orderName = $("#orderName");
 
-    function log(msg) {
-      logEl.textContent += msg + "\n";
-    }
-    function clearLog() {
-      logEl.textContent = "";
-    }
+    function log(msg) { logEl.textContent += msg + "\n"; }
+    function clearLog() { logEl.textContent = ""; }
 
     function normalizeHeader(h) {
-      return String(h ?? "")
-        .trim()
-        .replace(/\s+/g, "")
-        .toLowerCase();
+      return String(h ?? "").trim().replace(/\s+/g, "").toLowerCase();
     }
 
     function normalizeCode(v) {
@@ -173,10 +314,19 @@
     }
 
     function enableIfReady() {
+      // 기능 변화 없이 "파일 2개 업로드"만으로 활성화 (업체선택은 스타일용)
       runBtn.disabled = !(orderInput.files?.[0] && goodsInput.files?.[0]);
     }
-    orderInput.addEventListener("change", enableIfReady);
-    goodsInput.addEventListener("change", enableIfReady);
+
+    function syncFileName(inputEl, labelEl) {
+      const f = inputEl.files?.[0];
+      labelEl.textContent = f ? f.name : "선택된 파일 없음";
+      enableIfReady();
+    }
+
+    vendorSel.addEventListener("change", enableIfReady);
+    goodsInput.addEventListener("change", () => syncFileName(goodsInput, goodsName));
+    orderInput.addEventListener("change", () => syncFileName(orderInput, orderName));
 
     runBtn.addEventListener("click", async () => {
       clearLog();
@@ -234,7 +384,6 @@
 
         log("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
         const alphaToItem = new Map();
-
         for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
           const row = goodsAoa[r] || [];
           const alpha = normalizeCode(row[goodsAlphaIdx]);
@@ -285,7 +434,7 @@
           log("- 미매칭: 0건");
         }
 
-        const outName = `주문서입력_변환_${todayYMD()}.xlsx`;
+        const outName = `waybill_${todayYMD()}.xlsx`;
         XLSX.writeFile(outWb, outName);
         log(`\n완료! 다운로드 파일: ${outName}`);
       } catch (err) {
