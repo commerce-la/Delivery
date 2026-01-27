@@ -320,7 +320,7 @@ function buildWaybillAlpha(rows) {
 
     let carton = 0, fare = "", alphaTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       alphaTag = (goods["알파"] || "").toString().trim();
     } else {
@@ -384,7 +384,7 @@ function buildWaybillNaver(rows) {
 
     let carton = 0, fare = "", naverTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       naverTag = getNaverEbayTagFromGoods(goods); // "NAVER, 이베이"
     } else {
@@ -433,7 +433,7 @@ function buildWaybillOffice(rows) {
 
     let carton = 0, fare = "", officeTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       officeTag = (goods["오피스디포"] || "").toString().trim();
     } else {
@@ -486,7 +486,7 @@ function buildWaybillValuePoint(rows) {
 
     let carton = 0, fare = "", vpTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       vpTag = (goods["밸류포인트"] || "").toString().trim();
     } else {
@@ -541,7 +541,7 @@ function buildWaybillOfficeNex(rows) {
 
     let carton = 0, fare = "", nexTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       nexTag = (goods["오피스넥스"] || "").toString().trim();
     } else {
@@ -603,7 +603,7 @@ function buildWaybillEbay(rows) {
 
     let carton = 0, fare = "", tag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       tag = getNaverEbayTagFromGoods(goods); // "NAVER, 이베이"
     } else {
@@ -658,7 +658,7 @@ function buildWaybillDreamOffice(rows) {
 
     let carton = 0, fare = "", dreamTag = "";
     if (goods) {
-      carton = toNum(goods["최대수량"]);
+      carton = toNum(goods["입수량"]);
       fare = (goods["최대운임"] || "").toString().trim();
       // (선택) 공통품목에 표기용 "드림오피스" 컬럼이 있으면 품목명에 붙음
       dreamTag = (goods["드림오피스"] || "").toString().trim();
@@ -906,8 +906,8 @@ function makeWaybillRow(r, baseName, vendorTag, qty, boxQty, fare, mode, cartonS
 /* ===============================
    ✅ 중복 컬럼 채우기
    - 동일(받는분성명+주소+전화) 그룹이 2개 이상일 때
-   - qty != 최대수량(carton) 인 행 개수(notFullCount) 계산
-   - notFullCount가 2 이상일 때만, "최대수량이 아닌 행"에만 표기
+   - qty != 입수량(carton) 인 행 개수(notFullCount) 계산
+   - notFullCount가 2 이상일 때만, "입수량이 아닌 행"에만 표기
 ================================ */
 function applyDuplicateColumn(rows) {
   const groups = new Map();
@@ -932,7 +932,7 @@ function applyDuplicateColumn(rows) {
 
     const notFullCount = notFullRows.length;
     if (notFullCount <= 1) continue; // ✅ 1이면 생략
-    for (const row of notFullRows) row["중복"] = notFullCount; // ✅ 최대수량행은 표기 안 함
+    for (const row of notFullRows) row["중복"] = notFullCount; // ✅ 입수량행은 표기 안 함
   }
 
   for (const row of rows) {
