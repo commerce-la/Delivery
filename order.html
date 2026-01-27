@@ -1,447 +1,337 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Waybill 변환</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>order 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</title>
 
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <!-- ✅ 요청하신 “첨부한 HTML”과 동일한 스타일 -->
   <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-
-    body{
-      margin:0;
-      min-height:100vh;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background:
-        radial-gradient(1200px 600px at 15% 10%, rgba(59,130,246,.25), transparent 55%),
-        radial-gradient(900px 500px at 80% 20%, rgba(14,165,233,.18), transparent 55%),
-        linear-gradient(180deg, #0b1220 0%, #070b14 100%);
-      color:#e5e7eb;
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background:#0f172a; color:#e5e7eb; }
+    main { max-width: 980px; margin: 0 auto; padding: 24px 16px 40px; }
+    .card { background: rgba(15,23,42,.9); border: 1px solid rgba(148,163,184,.35); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    p { margin: 0 0 10px; color:#cbd5f5; font-size: 13px; line-height: 1.5; }
+    label { display:block; font-size: 12px; margin: 12px 0 6px; color:#e5e7eb; }
+    select, input[type="file"]{
+      width:100%; padding:10px; background:#020617; color:#e5e7eb;
+      border:1px solid rgba(148,163,184,.6); border-radius:10px;
     }
-
-    .wrap{
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 28px 22px 40px;
+    button{
+      margin-top:14px; padding:10px 16px; border:0; border-radius:9999px;
+      background:#2563eb; color:#fff; cursor:pointer; font-size: 13px;
     }
-
-    h1{
-      margin: 0 0 8px;
-      font-size: 28px;
-      line-height: 1.15;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: #f8fafc;
-    }
-
-    .sub{
-      margin: 0 0 18px;
-      color:#cbd5e1;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .sub b{ color:#f8fafc; }
-
-    .panel{
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 18px;
-      padding: 22px;
-      box-shadow: 0 18px 40px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
-    }
-
-    .row{ margin: 14px 0 18px; }
-
-    .label{
-      display:block;
-      margin: 0 0 10px;
-      font-weight: 800;
-      font-size: 14px;
-      color:#f1f5f9;
-    }
-
-    .control, .select{
-      width:100%;
-      height: 48px;
-      border-radius: 14px;
-      background: rgba(2,6,23,0.55);
-      border: 1px solid rgba(148,163,184,0.25);
-      color:#e5e7eb;
-      padding: 10px 14px;
-      outline:none;
-    }
-
-    .control:focus, .select:focus{
-      border-color: rgba(59,130,246,.65);
-      box-shadow: 0 0 0 4px rgba(59,130,246,.18);
-    }
-
-    /* 커스텀 파일 업로더 (2번째 이미지 느낌) */
-    .filewrap{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 14px;
-      width: 100%;
-      min-height: 56px;
-      border-radius: 16px;
-      background: rgba(2,6,23,0.55);
-      border: 1px solid rgba(148,163,184,0.25);
-      padding: 10px 12px;
-    }
-
-    .filewrap:focus-within{
-      border-color: rgba(59,130,246,.65);
-      box-shadow: 0 0 0 4px rgba(59,130,246,.18);
-    }
-
-    .filewrap .pick{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      height: 34px;
-      padding: 0 12px;
-      border-radius: 10px;
-      background: #f8fafc;
-      color: #0b1220;
-      font-weight: 900;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-      border: 1px solid rgba(0,0,0,0.12);
-      flex: 0 0 auto;
-    }
-
-    .filewrap .name{
-      flex: 1 1 auto;
-      color:#cbd5e1;
-      font-size: 13px;
-      overflow:hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    input[type="file"]{
-      position:absolute;
-      left:-9999px;
-      width:1px;height:1px;
-      opacity:0;
-    }
-
-    .actions{
-      margin-top: 8px;
-      display:flex;
-      align-items:center;
-      gap: 12px;
-    }
-
-    .btn{
-      height: 44px;
-      padding: 0 18px;
-      border-radius: 999px;
-      border: 0;
-      font-weight: 900;
-      cursor: pointer;
-      display:inline-flex;
-      align-items:center;
-      gap: 10px;
-      color:#fff;
-      background: linear-gradient(180deg, rgba(59,130,246,1) 0%, rgba(37,99,235,1) 100%);
-      box-shadow: 0 12px 26px rgba(37,99,235,.25);
-    }
-
-    .btn:disabled{
-      opacity: .55;
-      cursor: not-allowed;
-      box-shadow: none;
-    }
-
-    /* 2번째 이미지의 긴 가로 라인 느낌 */
-    .divider{
-      height: 1px;
-      background: rgba(148,163,184,0.22);
-      margin: 22px 0 14px;
-    }
-
-    .divider.big{
-      margin: 18px 0 0;
-    }
-
-    .log{
-      background: rgba(2,6,23,0.55);
-      border: 1px solid rgba(148,163,184,0.20);
-      border-radius: 14px;
-      padding: 12px 14px;
-      min-height: 100px;
-      white-space: pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
-      color:#e2e8f0;
-      margin-top: 14px;
-    }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+    .status{ margin-top:10px; font-size:12px; color:#a5b4fc; white-space:pre-wrap; min-height: 18px; }
+    .preview { margin-top: 12px; max-height: 280px; overflow:auto; border-top:1px solid rgba(148,163,184,.35); padding-top: 12px; }
+    .excludeWrap { margin-top: 12px; border-top:1px solid rgba(148,163,184,.35); padding-top: 12px; display:none; }
+    table{ border-collapse:collapse; width:100%; font-size:12px; }
+    th,td{ border:1px solid rgba(148,163,184,.5); padding:4px 6px; white-space:nowrap; }
+    th{ background:rgba(37,99,235,.25); position: sticky; top: 0; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .small { font-size: 12px; color:#cbd5f5; margin: 6px 0 10px; }
+    .badge { font-size: 11px; color:#e5e7eb; background: rgba(148,163,184,.18); border:1px solid rgba(148,163,184,.35); padding: 2px 8px; border-radius: 9999px; }
+    code { background: rgba(148,163,184,.15); padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <h1>Waybill 변환 (알파/네이버/오피스디포/웰루포인트/오피스넥스/이베이/드림오피스)</h1>
-    <div class="sub">
-      공통 품목 파일 + 주문 파일 업로드 → <b>waybill.xlsx</b> 생성<br/>
-      (제외) 네이버: 위/김 / 공통: 주문량=0 / 금액&lt;1 / 품목명에 [단종]
+<main>
+  <h1>Waybill 변환 (알파/네이버/오피스디포/밸류포인트/오피스넥스/이베이/드림오피스)</h1>
+  <p>
+    공통 품목 파일 + 주문 파일 업로드 → <code>waybill.xlsx</code> 생성<br/>
+    (현재 로직) 주문서의 (알파)상품코드 → erp_goods의 알파 상품코드 매칭 → 품목코드 채움
+  </p>
+
+  <div class="card">
+    <label>0. 업체 선택</label>
+    <select id="vendor">
+      <option value="">선택하세요</option>
+      <option value="alpha">알파</option>
+      <option value="naver">네이버</option>
+      <option value="office">오피스디포</option>
+      <option value="valuepoint">밸류포인트</option>
+      <option value="officenex">오피스넥스</option>
+      <option value="ebay">이베이(옥션/지마켓)</option>
+      <option value="dreamoffice">드림오피스</option>
+    </select>
+
+    <label style="margin-top:16px;">1. 공통 품목 파일 업로드 (erp_goods)</label>
+    <input id="goodsFile" type="file" accept=".xlsx,.xls" />
+
+    <label style="margin-top:16px;">2. 주문서 현황 파일 업로드</label>
+    <input id="orderFile" type="file" accept=".xlsx,.xls" />
+
+    <button id="convertBtn" disabled>waybill.xlsx 생성</button>
+    <div id="status" class="status"></div>
+
+    <!-- (미매칭/제외) 표시 영역: 스타일은 동일, 내용만 “미매칭”으로 사용 -->
+    <div id="excludeWrap" class="excludeWrap">
+      <div class="row">
+        <div class="small"><b>미매칭(품목코드 없음) 목록</b> (사유 / 알파상품코드 / 상품명 / 규격 / 주문서행)</div>
+        <div class="badge" id="excludeCount">0건</div>
+      </div>
+      <div id="excludeTable" style="max-height:260px; overflow:auto;"></div>
+      <div class="small" id="excludeNote" style="display:none;"></div>
     </div>
 
-    <div class="panel">
-
-      <div class="row">
-        <label class="label">0. 업체 선택</label>
-        <!-- 스타일만 맞추기 위한 UI (현재 로직엔 영향 없음) -->
-        <select id="vendor" class="select">
-          <option value="">선택하세요</option>
-          <option value="alpha">알파</option>
-          <option value="naver">네이버</option>
-          <option value="office_depot">오피스디포</option>
-          <option value="wellupoint">웰루포인트</option>
-          <option value="officenex">오피스넥스</option>
-          <option value="ebay">이베이</option>
-          <option value="dreamoffice">드림오피스</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <label class="label">1. 공통 품목 파일 업로드</label>
-        <div class="filewrap">
-          <label class="pick" for="goodsFile">파일 선택</label>
-          <div class="name" id="goodsName">선택된 파일 없음</div>
-          <input id="goodsFile" type="file" accept=".xlsx,.xls" />
-        </div>
-      </div>
-
-      <div class="row">
-        <label class="label">2. 주문 파일 업로드</label>
-        <div class="filewrap">
-          <label class="pick" for="orderFile">파일 선택</label>
-          <div class="name" id="orderName">선택된 파일 없음</div>
-          <input id="orderFile" type="file" accept=".xlsx,.xls" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button id="runBtn" class="btn" disabled>waybill.xlsx 생성</button>
-      </div>
-
-      <div class="divider"></div>
-
-      <div id="log" class="log"></div>
-
-      <div class="divider big"></div>
-    </div>
+    <!-- 미리보기 -->
+    <div class="preview" id="preview"></div>
   </div>
+</main>
 
-  <!-- SheetJS (XLSX) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+  const $ = (s) => document.querySelector(s);
 
-  <script>
-    const $ = (sel) => document.querySelector(sel);
+  const vendorEl = $("#vendor");
+  const goodsEl = $("#goodsFile");
+  const orderEl = $("#orderFile");
+  const btnEl = $("#convertBtn");
+  const statusEl = $("#status");
 
-    const vendorSel = $("#vendor"); // UI용(현재 로직엔 영향 없음)
-    const orderInput = $("#orderFile");
-    const goodsInput = $("#goodsFile");
-    const runBtn = $("#runBtn");
-    const logEl = $("#log");
-    const goodsName = $("#goodsName");
-    const orderName = $("#orderName");
+  const previewEl = $("#preview");
+  const excludeWrapEl = $("#excludeWrap");
+  const excludeCountEl = $("#excludeCount");
+  const excludeTableEl = $("#excludeTable");
+  const excludeNoteEl = $("#excludeNote");
 
-    function log(msg) { logEl.textContent += msg + "\n"; }
-    function clearLog() { logEl.textContent = ""; }
+  function setStatus(msg) {
+    statusEl.textContent += msg + "\n";
+  }
+  function clearStatus() {
+    statusEl.textContent = "";
+  }
 
-    function normalizeHeader(h) {
-      return String(h ?? "").trim().replace(/\s+/g, "").toLowerCase();
-    }
+  function normalizeHeader(h) {
+    return String(h ?? "").trim().replace(/\s+/g, "").toLowerCase();
+  }
 
-    function normalizeCode(v) {
-      if (v === null || v === undefined) return "";
-      let s = String(v).trim();
-      if (/^\d+(\.0+)?$/.test(s)) s = s.replace(/\.0+$/, "");
-      return s;
-    }
+  function normalizeCode(v) {
+    if (v === null || v === undefined) return "";
+    let s = String(v).trim();
+    // 1147840.0 같은 형태 보정
+    if (/^\d+(\.0+)?$/.test(s)) s = s.replace(/\.0+$/, "");
+    return s;
+  }
 
-    function readFileAsArrayBuffer(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-    }
-
-    function findHeaderRowIndex(aoa, requiredHeaderCandidates, scanRows = 30) {
-      const limit = Math.min(scanRows, aoa.length);
-      for (let r = 0; r < limit; r++) {
-        const row = (aoa[r] || []).map(normalizeHeader);
-        let ok = true;
-        for (const group of requiredHeaderCandidates) {
-          const hasAny = group.some(cand => row.includes(normalizeHeader(cand)));
-          if (!hasAny) { ok = false; break; }
-        }
-        if (ok) return r;
-      }
-      return 0;
-    }
-
-    function findColIndex(headers, candidates) {
-      const hnorm = headers.map(normalizeHeader);
-      for (const cand of candidates) {
-        const c = normalizeHeader(cand);
-        const idx = hnorm.indexOf(c);
-        if (idx >= 0) return idx;
-      }
-      for (const cand of candidates) {
-        const c = normalizeHeader(cand);
-        const idx = hnorm.findIndex(h => h.includes(c) || c.includes(h));
-        if (idx >= 0) return idx;
-      }
-      return -1;
-    }
-
-    function todayYMD() {
-      const d = new Date();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}${mm}${dd}`;
-    }
-
-    function enableIfReady() {
-      // 기능 변화 없이 "파일 2개 업로드"만으로 활성화 (업체선택은 스타일용)
-      runBtn.disabled = !(orderInput.files?.[0] && goodsInput.files?.[0]);
-    }
-
-    function syncFileName(inputEl, labelEl) {
-      const f = inputEl.files?.[0];
-      labelEl.textContent = f ? f.name : "선택된 파일 없음";
-      enableIfReady();
-    }
-
-    vendorSel.addEventListener("change", enableIfReady);
-    goodsInput.addEventListener("change", () => syncFileName(goodsInput, goodsName));
-    orderInput.addEventListener("change", () => syncFileName(orderInput, orderName));
-
-    runBtn.addEventListener("click", async () => {
-      clearLog();
-      try {
-        const orderFile = orderInput.files[0];
-        const goodsFile = goodsInput.files[0];
-
-        log("[1/4] 파일 읽는 중...");
-        const [orderBuf, goodsBuf] = await Promise.all([
-          readFileAsArrayBuffer(orderFile),
-          readFileAsArrayBuffer(goodsFile)
-        ]);
-
-        log("[2/4] 엑셀 파싱 중...");
-        const orderWb = XLSX.read(orderBuf, { type: "array" });
-        const goodsWb = XLSX.read(goodsBuf, { type: "array" });
-
-        const orderSheetName = orderWb.SheetNames[0];
-        const goodsSheetName = goodsWb.SheetNames[0];
-
-        const orderWs = orderWb.Sheets[orderSheetName];
-        const goodsWs = goodsWb.Sheets[goodsSheetName];
-
-        const orderAoa = XLSX.utils.sheet_to_json(orderWs, { header: 1, defval: "" });
-        const goodsAoa = XLSX.utils.sheet_to_json(goodsWs, { header: 1, defval: "" });
-
-        const orderHeaderRow = findHeaderRowIndex(orderAoa, [
-          ["상품코드", "알파 상품코드", "알파상품코드"],
-          ["수량", "주문수량", "발주수량"]
-        ]);
-
-        const goodsHeaderRow = findHeaderRowIndex(goodsAoa, [
-          ["알파 상품코드", "알파상품코드"],
-          ["품목코드"]
-        ]);
-
-        const orderHeaders = orderAoa[orderHeaderRow] || [];
-        const goodsHeaders = goodsAoa[goodsHeaderRow] || [];
-
-        const orderAlphaIdx = findColIndex(orderHeaders, ["알파 상품코드", "알파상품코드", "상품코드"]);
-        const orderQtyIdx   = findColIndex(orderHeaders, ["수량", "주문수량", "발주수량"]);
-        const orderNameIdx  = findColIndex(orderHeaders, ["상품명", "품명"]);
-        const orderSpecIdx  = findColIndex(orderHeaders, ["규격", "옵션", "세부사항"]);
-
-        const goodsAlphaIdx = findColIndex(goodsHeaders, ["알파 상품코드", "알파상품코드"]);
-        const goodsItemIdx  = findColIndex(goodsHeaders, ["품목코드"]);
-
-        if (orderAlphaIdx < 0) throw new Error("주문서에서 상품코드(알파 상품코드) 컬럼을 찾지 못했습니다.");
-        if (orderQtyIdx < 0)   throw new Error("주문서에서 수량 컬럼을 찾지 못했습니다.");
-        if (goodsAlphaIdx < 0) throw new Error("erp_goods에서 알파 상품코드 컬럼을 찾지 못했습니다.");
-        if (goodsItemIdx < 0)  throw new Error("erp_goods에서 품목코드 컬럼을 찾지 못했습니다.");
-
-        log(`- 주문서 시트: ${orderSheetName} / 헤더행: ${orderHeaderRow + 1}`);
-        log(`- erp_goods 시트: ${goodsSheetName} / 헤더행: ${goodsHeaderRow + 1}`);
-
-        log("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
-        const alphaToItem = new Map();
-        for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
-          const row = goodsAoa[r] || [];
-          const alpha = normalizeCode(row[goodsAlphaIdx]);
-          const item = String(row[goodsItemIdx] ?? "").trim();
-          if (!alpha || !item) continue;
-          if (!alphaToItem.has(alpha)) alphaToItem.set(alpha, item);
-        }
-
-        log("[4/4] Template(주문서입력) 데이터 생성 중...");
-        const outHeaders = ["품목코드", "수량", "세부사항", "입수량", "카톤수", "무게"];
-        const outRows = [];
-        const unmatchedRows = [];
-
-        for (let r = orderHeaderRow + 1; r < orderAoa.length; r++) {
-          const row = orderAoa[r] || [];
-          const alpha = normalizeCode(row[orderAlphaIdx]);
-          const qty = row[orderQtyIdx];
-
-          if (!alpha && (qty === "" || qty === null || qty === undefined)) continue;
-
-          const itemCode = alphaToItem.get(alpha) || "";
-          const name = orderNameIdx >= 0 ? String(row[orderNameIdx] ?? "").trim() : "";
-          const spec = orderSpecIdx >= 0 ? String(row[orderSpecIdx] ?? "").trim() : "";
-          const detail = [name, spec].filter(Boolean).join(" / ");
-
-          outRows.push([itemCode, qty, detail, "", "", ""]);
-
-          if (!itemCode) {
-            unmatchedRows.push({
-              "주문서행번호(엑셀기준)": r + 1,
-              "알파상품코드": alpha,
-              "수량": qty,
-              "상품명": name,
-              "규격": spec
-            });
-          }
-        }
-
-        const outWb = XLSX.utils.book_new();
-        const wsOut = XLSX.utils.aoa_to_sheet([outHeaders, ...outRows]);
-        XLSX.utils.book_append_sheet(outWb, wsOut, "주문서입력");
-
-        if (unmatchedRows.length > 0) {
-          const wsUn = XLSX.utils.json_to_sheet(unmatchedRows, { skipHeader: false });
-          XLSX.utils.book_append_sheet(outWb, wsUn, "미매칭");
-          log(`- 미매칭: ${unmatchedRows.length}건 (미매칭 시트에 저장)`);
-        } else {
-          log("- 미매칭: 0건");
-        }
-
-        const outName = `waybill_${todayYMD()}.xlsx`;
-        XLSX.writeFile(outWb, outName);
-        log(`\n완료! 다운로드 파일: ${outName}`);
-      } catch (err) {
-        console.error(err);
-        log("\n[오류] " + (err?.message || String(err)));
-      }
+  function readAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsArrayBuffer(file);
     });
-  </script>
+  }
+
+  // rows(AOA)에서 헤더행(필수 컬럼을 포함하는 행)을 탐색
+  function findHeaderRowIndex(aoa, requiredHeaderCandidates, scanRows = 30) {
+    const limit = Math.min(scanRows, aoa.length);
+    for (let r = 0; r < limit; r++) {
+      const row = (aoa[r] || []).map(normalizeHeader);
+      let ok = true;
+      for (const group of requiredHeaderCandidates) {
+        const hasAny = group.some(cand => row.includes(normalizeHeader(cand)));
+        if (!hasAny) { ok = false; break; }
+      }
+      if (ok) return r;
+    }
+    return 0; // 못 찾으면 0행 가정
+  }
+
+  function findColIndex(headers, candidates) {
+    const hnorm = headers.map(normalizeHeader);
+    // 1) 완전 일치
+    for (const cand of candidates) {
+      const c = normalizeHeader(cand);
+      const idx = hnorm.indexOf(c);
+      if (idx >= 0) return idx;
+    }
+    // 2) 포함 매칭
+    for (const cand of candidates) {
+      const c = normalizeHeader(cand);
+      const idx = hnorm.findIndex(h => h.includes(c) || c.includes(h));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
+  function enableIfReady() {
+    btnEl.disabled = !(vendorEl.value && goodsEl.files?.[0] && orderEl.files?.[0]);
+  }
+
+  vendorEl.addEventListener("change", enableIfReady);
+  goodsEl.addEventListener("change", enableIfReady);
+  orderEl.addEventListener("change", enableIfReady);
+
+  function renderTable(container, headers, rows, maxRows = 30) {
+    const safeRows = rows.slice(0, maxRows);
+    let html = "<table><thead><tr>";
+    for (const h of headers) html += `<th>${escapeHtml(String(h))}</th>`;
+    html += "</tr></thead><tbody>";
+
+    for (const r of safeRows) {
+      html += "<tr>";
+      for (let i = 0; i < headers.length; i++) {
+        html += `<td>${escapeHtml(String(r[i] ?? ""))}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    container.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return s
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  btnEl.addEventListener("click", async () => {
+    clearStatus();
+    previewEl.innerHTML = "";
+    excludeWrapEl.style.display = "none";
+    excludeCountEl.textContent = "0건";
+    excludeTableEl.innerHTML = "";
+    excludeNoteEl.style.display = "none";
+    excludeNoteEl.textContent = "";
+
+    try {
+      const goodsFile = goodsEl.files[0];
+      const orderFile = orderEl.files[0];
+
+      setStatus("[1/4] 파일 읽는 중...");
+      const [goodsBuf, orderBuf] = await Promise.all([
+        readAsArrayBuffer(goodsFile),
+        readAsArrayBuffer(orderFile)
+      ]);
+
+      setStatus("[2/4] 엑셀 파싱 중...");
+      const goodsWb = XLSX.read(goodsBuf, { type: "array" });
+      const orderWb = XLSX.read(orderBuf, { type: "array" });
+
+      const goodsSheetName = goodsWb.SheetNames[0];
+      const orderSheetName = orderWb.SheetNames[0];
+
+      const goodsWs = goodsWb.Sheets[goodsSheetName];
+      const orderWs = orderWb.Sheets[orderSheetName];
+
+      const goodsAoa = XLSX.utils.sheet_to_json(goodsWs, { header: 1, defval: "" });
+      const orderAoa = XLSX.utils.sheet_to_json(orderWs, { header: 1, defval: "" });
+
+      // erp_goods: 알파 상품코드, 품목코드
+      const goodsHeaderRow = findHeaderRowIndex(goodsAoa, [
+        ["알파 상품코드", "알파상품코드"],
+        ["품목코드"]
+      ]);
+
+      // 주문서: (알파)상품코드, 수량
+      const orderHeaderRow = findHeaderRowIndex(orderAoa, [
+        ["상품코드", "알파 상품코드", "알파상품코드"],
+        ["수량", "주문수량", "발주수량"]
+      ]);
+
+      const goodsHeaders = goodsAoa[goodsHeaderRow] || [];
+      const orderHeaders = orderAoa[orderHeaderRow] || [];
+
+      const goodsAlphaIdx = findColIndex(goodsHeaders, ["알파 상품코드", "알파상품코드"]);
+      const goodsItemIdx  = findColIndex(goodsHeaders, ["품목코드"]);
+
+      const orderAlphaIdx = findColIndex(orderHeaders, ["알파 상품코드", "알파상품코드", "상품코드"]);
+      const orderQtyIdx   = findColIndex(orderHeaders, ["수량", "주문수량", "발주수량"]);
+      const orderNameIdx  = findColIndex(orderHeaders, ["상품명", "품명"]);
+      const orderSpecIdx  = findColIndex(orderHeaders, ["규격", "옵션", "세부사항"]);
+
+      if (goodsAlphaIdx < 0) throw new Error("erp_goods에서 '알파 상품코드' 컬럼을 찾지 못했습니다.");
+      if (goodsItemIdx  < 0) throw new Error("erp_goods에서 '품목코드' 컬럼을 찾지 못했습니다.");
+      if (orderAlphaIdx < 0) throw new Error("주문서에서 '상품코드(알파)' 컬럼을 찾지 못했습니다.");
+      if (orderQtyIdx   < 0) throw new Error("주문서에서 '수량' 컬럼을 찾지 못했습니다.");
+
+      setStatus(`- erp_goods 시트: ${goodsSheetName} / 헤더행: ${goodsHeaderRow + 1}`);
+      setStatus(`- 주문서 시트: ${orderSheetName} / 헤더행: ${orderHeaderRow + 1}`);
+
+      setStatus("[3/4] 알파 상품코드 → 품목코드 매핑 생성 중...");
+      const alphaToItem = new Map();
+      let dup = 0;
+      for (let r = goodsHeaderRow + 1; r < goodsAoa.length; r++) {
+        const row = goodsAoa[r] || [];
+        const alpha = normalizeCode(row[goodsAlphaIdx]);
+        const item = String(row[goodsItemIdx] ?? "").trim();
+        if (!alpha || !item) continue;
+        if (!alphaToItem.has(alpha)) alphaToItem.set(alpha, item);
+        else dup++;
+      }
+      setStatus(`- 매핑 키 수: ${alphaToItem.size} (중복키 ${dup})`);
+
+      setStatus("[4/4] 주문서입력 데이터 생성 중...");
+      const outHeaders = ["품목코드", "수량", "세부사항", "입수량", "카톤수", "무게"];
+      const outRows = [];
+      const unmatched = [];
+
+      for (let r = orderHeaderRow + 1; r < orderAoa.length; r++) {
+        const row = orderAoa[r] || [];
+        const alpha = normalizeCode(row[orderAlphaIdx]);
+        const qty = row[orderQtyIdx];
+
+        // 빈행 스킵
+        if (!alpha && (qty === "" || qty === null || qty === undefined)) continue;
+
+        const itemCode = alphaToItem.get(alpha) || "";
+        const name = orderNameIdx >= 0 ? String(row[orderNameIdx] ?? "").trim() : "";
+        const spec = orderSpecIdx >= 0 ? String(row[orderSpecIdx] ?? "").trim() : "";
+        const detail = [name, spec].filter(Boolean).join(" / ");
+
+        outRows.push([itemCode, qty, detail, "", "", ""]);
+
+        if (!itemCode) {
+          unmatched.push([
+            "품목코드 미매칭",
+            alpha,
+            name,
+            spec,
+            r + 1
+          ]);
+        }
+      }
+
+      // ✅ 미리보기(스타일 동일)
+      renderTable(previewEl, outHeaders, outRows, 25);
+      setStatus(`- 생성 행 수: ${outRows.length}`);
+
+      // ✅ 미매칭(스타일 동일)
+      if (unmatched.length > 0) {
+        excludeWrapEl.style.display = "block";
+        excludeCountEl.textContent = `${unmatched.length}건`;
+        const uHeaders = ["사유", "알파상품코드", "상품명", "규격", "주문서행"];
+        renderTable(excludeTableEl, uHeaders, unmatched, 200);
+        excludeNoteEl.style.display = "block";
+        excludeNoteEl.textContent = "※ 미매칭 건은 엑셀 파일의 '미매칭' 시트에도 저장됩니다.";
+      }
+
+      // ✅ 결과 엑셀 생성 (Template 업로드 없이 내장 형식)
+      const outWb = XLSX.utils.book_new();
+      const wsOut = XLSX.utils.aoa_to_sheet([outHeaders, ...outRows]);
+      XLSX.utils.book_append_sheet(outWb, wsOut, "주문서입력");
+
+      if (unmatched.length > 0) {
+        const uHeaders = ["사유", "알파상품코드", "상품명", "규격", "주문서행"];
+        const wsUn = XLSX.utils.aoa_to_sheet([uHeaders, ...unmatched]);
+        XLSX.utils.book_append_sheet(outWb, wsUn, "미매칭");
+      }
+
+      XLSX.writeFile(outWb, "waybill.xlsx");
+      setStatus("\n완료! 다운로드: waybill.xlsx");
+
+    } catch (e) {
+      console.error(e);
+      setStatus("\n[오류] " + (e?.message || String(e)));
+    }
+  });
+</script>
 </body>
 </html>
